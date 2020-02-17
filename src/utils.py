@@ -47,15 +47,16 @@ def get_args():
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
     argparser.add_argument('-m', '--model', type=str, required=True, choices=['TTransE', 'TADistMult', 'TATransE'])
     argparser.add_argument('-d', '--dropout', type=float, default=0)
-    argparser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
+    argparser.add_argument('-es', '--embedding_size', type=int, default=128)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
-    argparser.add_argument('-es', '--embedding_size', type=int, default=100)
-    argparser.add_argument('-bs', '--batch_size', type=int, default=512)
-    argparser.add_argument('-e', '--epochs', type=int, default=1000)
-    argparser.add_argument('-f', '--filter', default=True, action='store_true')
     argparser.add_argument('-l', '--lmbda', type=float, default=0.01)
     argparser.add_argument('-m1', '--margin1', type=int, default=1)
     argparser.add_argument('-m2', '--margin2', type=int, default=1)
+    argparser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
+    argparser.add_argument('-bs', '--batch_size', type=int, default=512)
+    argparser.add_argument('-e', '--epochs', type=int, default=1000)
+    argparser.add_argument('-f', '--filter', default=True, action='store_true')
+    argparser.add_argument('-ns', '--negative_samples', type=int, default=1)
     argparser.add_argument('-s', '--seed', type=int, default=2020)
     argparser.add_argument('-r', '--resume', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
@@ -109,18 +110,19 @@ def get_p(args):
     bpth = 'models/' + args.dataset
     os.makedirs(bpth, exist_ok=True)
 
-    fn = '_'.join(['model', str(args.model),
-                   'dropout', str(args.dropout),
-                   'learning_rate', str(args.learning_rate),
+    fn = '_'.join(['m', str(args.model),
+                   'd', str(args.dropout),
+                   'es', str(args.embedding_size),
                    'l1', str(args.l1),
-                   'embedding_size', str(args.embedding_size),
-                   'batch_size', str(args.batch_size),
-                   'epochs', str(args.epochs),
-                   'filter', str(args.filter),
-                   'lmbda', str(args.lmbda),
-                   'margin1', str(args.margin1),
-                   'margin1', str(args.margin1),
-                   'seed', str(args.seed)]) + '.ckpt'
+                   'l', str(args.lmbda),
+                   'm1', str(args.margin1),
+                   'm2', str(args.margin1),
+                   'lr', str(args.learning_rate),
+                   'bs', str(args.batch_size),
+                   'e', str(args.epochs),
+                   'f', str(args.filter),
+                   'ns', str(args.negative_samples),
+                   's', str(args.seed)]) + '.ckpt'
     p = os.path.join(bpth, fn)
     return p
 
@@ -161,7 +163,7 @@ def _rr(smp):
 
 def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
     exp = args.model != 'TTransE'
-    pos_smp, neg_smp = data.prepare(b, al, al_ts, args.batch_size, args.filter, not mdl.training, exp=exp)
+    pos_smp, neg_smp = data.prepare(args, b, al, al_ts, args.batch_size, args.filter, not mdl.training, exp=exp)
 
     pos_s = torch.LongTensor(pos_smp[:, 0]).to(dvc)
     pos_r = torch.LongTensor(pos_smp[:, 1]).to(dvc)

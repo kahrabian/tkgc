@@ -40,21 +40,23 @@ def _check(x, idx, s, al_ts):
     return tuple(x) in al_ts
 
 
-def _corrupt(pos, al, al_ts, fil):
-    neg = pos.copy()
-    for x in neg:
-        idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
-        ss = al[:, idx].copy()
-        s = np.random.choice(ss, 1)[0]
-        while s == x[idx] or (fil and _check(x, idx, s, al_ts)):
+def _corrupt(args, pos, al, al_ts, fil):
+    neg = np.zeros((pos.shape[0] * args.negative_samples, pos.shape[1]), dtype=np.int_)
+    for i in range(args.negative_samples):
+        neg[i * pos.shape[0]:(i + 1) * pos.shape[0]] = pos.copy()
+        for x in neg[i * pos.shape[0]:(i + 1) * pos.shape[0]]:
+            idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
+            ss = al[:, idx].copy()
             s = np.random.choice(ss, 1)[0]
-        x[idx] = s
+            while s == x[idx] or (fil and _check(x, idx, s, al_ts)):
+                s = np.random.choice(ss, 1)[0]
+            x[idx] = s
     return neg
 
 
-def prepare(b, al, al_ts, sz, fil, rnd, exp=False):
+def prepare(args, b, al, al_ts, sz, fil, rnd, exp=False):
     pos = b[np.random.choice(b.shape[0], sz)].copy() if rnd else b.copy()
-    neg = _corrupt(pos, al, al_ts, fil)  # TODO: More than one per sample
+    neg = _corrupt(args, pos, al, al_ts, fil)
     if exp:
         pos = np.expand_dims(pos, axis=2)
         neg = np.expand_dims(neg, axis=2)

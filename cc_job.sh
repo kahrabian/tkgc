@@ -12,7 +12,7 @@
 source activate gg
 
 python -BW ignore main.py -ds GitGraph \
-                          -m TATransE \
+                          -m TADistMult \
                           -d 0.5 \
                           -lr 1e-5 \
                           -es 512 \
