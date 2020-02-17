@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 from itertools import combinations
 
-import data
-import models
+import src.data as data
+import src.models as models
 
 
 class Metric(object):
@@ -76,7 +76,7 @@ def _load(pth, *fns):
 
 
 def get_data(args):
-    bpath = '../data/' + args.dataset
+    bpath = 'data/' + args.dataset
     tr = _load(bpath, 'train.txt')
     vd = _load(bpath, 'valid.txt')
     ts = _load(bpath, 'test.txt')
@@ -106,7 +106,7 @@ def get_data(args):
 
 
 def get_p(args):
-    bpth = '../models/' + args.dataset
+    bpth = 'models/' + args.dataset
     os.makedirs(bpth, exist_ok=True)
 
     fn = '_'.join(['model', str(args.model),

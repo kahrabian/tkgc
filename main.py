@@ -2,8 +2,8 @@ import time
 import numpy as np
 import torch
 
-import data
-import utils
+import src.data as data
+import src.utils as utils
 
 
 def main():

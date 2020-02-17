@@ -177,8 +177,3 @@ dmypy.json
 data/
 logs/
 models/
-resources/compute_canada/
-!resources/compute_canada/*.template.sh
-
-resources/graphvite/
-!resources/graphvite/*.template.sh
