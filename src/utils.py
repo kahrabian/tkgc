@@ -193,7 +193,7 @@ def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
         regu += reg_f(rt_embed)
 
     x = torch.cat([pos, neg])
-    y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)])
+    y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
 
     if args.model == 'TADistMult':
         loss = loss_f(x, y)
