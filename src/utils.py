@@ -132,8 +132,8 @@ def get_model(args, e_cnt, r_cnt, t_cnt):
     if args.resume:
         if not os.path.exists(p):
             raise FileNotFoundError('can\'t find the saved model with the given params')
-        return torch.load(p)
-    return getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt)
+        return nn.DataParallel(torch.load(p))
+    return nn.DataParallel(getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt))
 
 
 def get_loss_f(args):
@@ -181,15 +181,15 @@ def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
     else:
         pos, neg = mdl(pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t)
 
-    e_embed = mdl.e_embed(torch.cat([pos_s, pos_o, neg_s, neg_o]))
+    e_embed = mdl.module.e_embed(torch.cat([pos_s, pos_o, neg_s, neg_o]))
     regu = reg_f(e_embed)
 
     if args.model == 'TTransE':
-        r_embed = mdl.r_embed(torch.cat([pos_r, neg_r]))
-        r_trans = mdl.t_trans(r_embed)
+        r_embed = mdl.module.r_embed(torch.cat([pos_r, neg_r]))
+        r_trans = mdl.module.t_trans(r_embed)
         regu += reg_f(r_embed) + reg_f(r_trans)
     else:
-        rt_embed = mdl.rt_embed(torch.cat([pos_r, neg_r]), torch.cat([pos_t, neg_t]))
+        rt_embed = mdl.module.rt_embed(torch.cat([pos_r, neg_r]), torch.cat([pos_t, neg_t]))
         regu += reg_f(rt_embed)
 
     x = torch.cat([pos, neg])
@@ -205,11 +205,11 @@ def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
                 pos_ri = torch.LongTensor(pos_rr[:, 0:1]).to(dvc)
                 pos_rj = torch.LongTensor(pos_rr[:, 1:2]).to(dvc)
 
-                ri_embed = mdl.r_embed(pos_ri)
-                rj_embed = mdl.r_embed(pos_rj)
+                ri_embed = mdl.module.r_embed(pos_ri)
+                rj_embed = mdl.module.r_embed(pos_rj)
 
-                ri_trans = mdl.t_trans(ri_embed)
-                rj_trans = mdl.t_trans(rj_embed)
+                ri_trans = mdl.module.t_trans(ri_embed)
+                rj_trans = mdl.module.t_trans(rj_embed)
 
                 loss += loss_g(ri_trans, rj_trans, (-1) * torch.ones(ri_trans.shape))
     loss += args.lmbda * regu
@@ -226,31 +226,31 @@ def evaluate(args, b, mdl, mtr, dvc):
     ts_t = torch.LongTensor(b[:, 3:]).to(dvc)
 
     if args.model == 'TTransE':
-        rt_embed = mdl.r_embed(ts_r).squeeze()
+        rt_embed = mdl.module.r_embed(ts_r).squeeze()
     else:
-        rt_embed = mdl.rt_embed(ts_r, ts_t)
+        rt_embed = mdl.module.rt_embed(ts_r, ts_t)
 
     if args.mode != 'tail':
         ts_o = torch.LongTensor(b[:, 2]).to(dvc)
-        o_embed = mdl.e_embed(ts_o)
+        o_embed = mdl.module.e_embed(ts_o)
         if args.model == 'TADistMult':
             ort = rt_embed * o_embed
-            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
             ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).detach().numpy()
+            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).detach().numpy()
         for i, s in enumerate(b[:, 0]):
             mtr.update(np.searchsorted(s_r[i], s) + 1)
 
     if args.mode != 'head':
         ts_s = torch.LongTensor(b[:, 0]).to(dvc)
-        s_embed = mdl.e_embed(ts_s)
+        s_embed = mdl.module.e_embed(ts_s)
         if args.model == 'TADistMult':
             srt = s_embed * rt_embed
-            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            o_r = torch.matmul(srt, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
             srt = s_embed + rt_embed
-            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).detach().numpy()
+            o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).detach().numpy()
         for i, o in enumerate(b[:, 2]):
             mtr.update(np.searchsorted(o_r[i], o) + 1)
 
