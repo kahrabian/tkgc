@@ -158,7 +158,8 @@ def _rr_fil(x):
 
 
 def _rr(smp):
-    return np.array(list(map(lambda x: (x[0][1], x[1][1]), filter(_rr_fil, combinations(smp, 2)))))
+    return np.array(list(map(lambda x: (x[0][1], x[1][1]) if x[0][2] < x[1][2] else (x[1][1], x[0][1]),
+                             filter(_rr_fil, combinations(smp, 2)))))
 
 
 def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
@@ -200,7 +201,7 @@ def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
     else:
         loss = loss_f(x, y, (-1) * torch.ones(y.shape))
         if args.model == 'TTransE':
-            pos_rr = _rr(pos_smp[:, 0:2].squeeze())
+            pos_rr = _rr(pos_smp[:, [0, 1, 3]].squeeze())
             if pos_rr.shape[0] != 0:
                 pos_ri = torch.LongTensor(pos_rr[:, 0:1]).to(dvc)
                 pos_rj = torch.LongTensor(pos_rr[:, 1:2]).to(dvc)
