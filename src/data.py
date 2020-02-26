@@ -34,29 +34,29 @@ def transform(d, idxs):
     return td
 
 
-def _check(x, idx, s, al_ts):
+def _check(x, idx, s, tr_ts):
     x = x.copy()
     x[idx] = s
-    return tuple(x) in al_ts
+    return tuple(x) in tr_ts
 
 
-def _corrupt(args, pos, al, al_ts, fil):
+def _corrupt(args, pos, tr, tr_ts, fil):
     neg = np.zeros((pos.shape[0] * args.negative_samples, pos.shape[1]), dtype=np.int_)
     for i in range(args.negative_samples):
         neg[i * pos.shape[0]:(i + 1) * pos.shape[0]] = pos.copy()
         for x in neg[i * pos.shape[0]:(i + 1) * pos.shape[0]]:
             idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
-            ss = al[:, idx].copy()
+            ss = tr[:, idx].copy()
             s = np.random.choice(ss, 1)[0]
-            while s == x[idx] or (fil and _check(x, idx, s, al_ts)):
+            while s == x[idx] or (fil and _check(x, idx, s, tr_ts)):
                 s = np.random.choice(ss, 1)[0]
             x[idx] = s
     return neg
 
 
-def prepare(args, b, al, al_ts, sz, fil, rnd, exp=False):
+def prepare(args, b, tr, tr_ts, sz, fil, rnd, exp=False):
     pos = b[np.random.choice(b.shape[0], sz)].copy() if rnd else b.copy()
-    neg = _corrupt(args, pos, al, al_ts, fil)
+    neg = _corrupt(args, pos, tr, tr_ts, fil)
     if exp:
         pos = np.expand_dims(pos, axis=2)
         neg = np.expand_dims(neg, axis=2)

@@ -81,7 +81,7 @@ def get_data(args):
     tr = _load(bpath, 'train.txt')
     vd = _load(bpath, 'valid.txt')
     ts = _load(bpath, 'test.txt')
-    al = _load(bpath, 'train.txt', 'valid.txt', 'test.txt')
+    al = _load(bpath, 'train.txt', 'valid.txt', 'test.txt')  # NOTE: Train data might be incomplete!
 
     qf = [None, None, None, lambda x: data.format_time(args, x, re.compile(r'[-T:Z]'))]
     tr = data.format(tr, qf)
@@ -97,13 +97,14 @@ def get_data(args):
     tr = data.transform(tr, qt)
     vd = data.transform(vd, qt)
     ts = data.transform(ts, qt)
-    al = data.transform(al, qt)
 
-    al_ts = {tuple(x) for x in al[:, :3]}
+    tr_ts = {tuple(x) for x in tr[:, :3]}
+
     e_idx_ln = len(e_idx)
+    r_idx_ln = len(r_idx)
     t_idx_ln = len(t_idx)
 
-    return tr, vd, ts, al, al_ts, e_idx_ln, t_idx_ln
+    return tr, vd, ts, tr_ts, e_idx_ln, r_idx_ln, t_idx_ln
 
 
 def get_p(args):
@@ -148,9 +149,9 @@ def get_reg_f(args, dvc):
     return lambda x: torch.mean(x ** 2).to(dvc)
 
 
-def get_loss(args, b, al, al_ts, mdl, loss_f, reg_f, dvc):
+def get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc):
     exp = args.model != 'TTransE'
-    pos_smp, neg_smp = data.prepare(args, b, al, al_ts, args.batch_size, args.filter, not mdl.training, exp=exp)
+    pos_smp, neg_smp = data.prepare(args, b, tr, tr_ts, args.batch_size, args.filter, not mdl.training, exp=exp)
 
     pos_s = torch.LongTensor(pos_smp[:, 0]).to(dvc)
     pos_r = torch.LongTensor(pos_smp[:, 1]).to(dvc)
