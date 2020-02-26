@@ -66,19 +66,19 @@ class TAX(nn.Module):
         t = t.reshape(-1)
 
         t_e = self.t_embed(t).view(bs, ts, -1)
-        s_e = torch.cat((r_e, t_e), 1)
+        s_e = torch.cat((r_e.unsqueeze(1), t_e), 1)
         _, (h, _) = self.lstm(s_e)
 
         return h.squeeze()
 
     def forward(self, pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t):
-        pos_s_e = self.e_embed(pos_s).squeeze()
-        pos_o_e = self.e_embed(pos_o).squeeze()
-        pos_rt_e = self.rt_embed(pos_r, pos_t).squeeze()
+        pos_s_e = self.e_embed(pos_s)
+        pos_o_e = self.e_embed(pos_o)
+        pos_rt_e = self.rt_embed(pos_r, pos_t)
 
-        neg_s_e = self.e_embed(neg_s).squeeze()
-        neg_o_e = self.e_embed(neg_o).squeeze()
-        neg_rt_e = self.rt_embed(neg_r, neg_t).squeeze()
+        neg_s_e = self.e_embed(neg_s)
+        neg_o_e = self.e_embed(neg_o)
+        neg_rt_e = self.rt_embed(neg_r, neg_t)
 
         pos_s_e = F.dropout(pos_s_e, p=self.dropout, training=self.training)
         pos_o_e = F.dropout(pos_o_e, p=self.dropout, training=self.training)

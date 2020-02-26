@@ -58,7 +58,4 @@ def prepare(args, b, tr, tr_ts):
     _pos = b.copy()
     neg = _corrupt(args, _pos, tr, tr_ts)
     pos = np.repeat(_pos, args.negative_samples, axis=0) if args.model != 'TDistMult' else _pos
-    if args.model != 'TTransE':
-        pos = np.expand_dims(pos, axis=2)
-        neg = np.expand_dims(neg, axis=2)
     return pos, neg
