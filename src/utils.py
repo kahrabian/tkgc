@@ -13,25 +13,29 @@ import src.models as models
 class Metric(object):
     def __init__(self):
         self.cnt = 0
-        self.mr = 0
-        self.mrr = 0
         self.h_1 = 0
         self.h_3 = 0
         self.h_10 = 0
+        self.mr = 0
+        self.mrr = 0
+
+    def _normalize(self):
+        return self.h_1 / self.cnt, self.h_3 / self.cnt, self.h_10 / self.cnt, self.mr / self.cnt, self.mrr / self.cnt
 
     def __str__(self):
-        mr = self.mr / self.cnt
-        mrr = self.mrr / self.cnt
-        h_1 = self.h_1 / self.cnt
-        h_3 = self.h_3 / self.cnt
-        h_10 = self.h_10 / self.cnt
-        return f'\nH@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}'
+        h_1, h_3, h_10, mr, mrr = self._normalize()
+        return f'\nH@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}\n'
+
+    def __iter__(self):
+        h_1, h_3, h_10, mr, mrr = self._normalize()
+        yield 'metric/H@1', h_1
+        yield 'metric/H@3', h_3
+        yield 'metric/H@10', h_10
+        yield 'metric/MR', mr
+        yield 'metric/MRR', mrr
 
     def update(self, r):
         self.cnt += 1
-
-        self.mr += r
-        self.mrr += 1.0 / r
 
         if r < 2:
             self.h_1 += 1
@@ -39,6 +43,9 @@ class Metric(object):
             self.h_3 += 1
         if r < 11:
             self.h_10 += 1
+
+        self.mr += r
+        self.mrr += 1.0 / r
 
 
 def get_args():

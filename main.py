@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 import src.data as data
@@ -20,6 +21,8 @@ def main():
     loss_f = utils.get_loss_f(args).to(dvc)
     optim = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate)
 
+    tb_sw = SummaryWriter()
+
     if not args.test:
         tr_bs = data.split(tr, args.batch_size)
         vd_bs = data.split(vd, args.batch_size)
@@ -35,12 +38,17 @@ def main():
                     loss.backward()
                     optim.step()
                     tr_loss += loss.item()
+
+                    tb_sw.add_scalars(f'epoch/{epoch}', {'loss': loss.item(), 'mean_loss': tr_loss / (i + 1)}, i)
+
                     t.set_postfix(loss=f'{tr_loss / (i + 1):.4f}')
                     t.update()
 
             el_tm = time.time() - st_tm
             tr_loss /= len(tr_bs)
             print(f'Epoch {epoch + 1}/{args.epochs}: training_loss={tr_loss:.4f}, time={el_tm:.4f}')
+
+            tb_sw.add_scalar(f'loss/train', tr_loss, epoch)
 
             if (epoch + 1) % args.log_frequency == 0 or epoch == (args.epochs - 1):
                 vd_loss = 0
@@ -54,6 +62,8 @@ def main():
                 vd_loss /= len(vd_bs)
                 print(f'Epoch {epoch + 1}/{args.epochs}: validation_loss={vd_loss:.4f}, time={el_tm:.4f}')
 
+                tb_sw.add_scalar(f'loss/validation', vd_loss, epoch)
+
                 utils.save(args, mdl)
 
     mtr = utils.Metric()
@@ -62,6 +72,10 @@ def main():
     for b in ts_bs:
         utils.evaluate(args, b, mdl, mtr, dvc)
     print(mtr)
+
+    tb_sw.add_hparams(vars(args), dict(mtr))
+
+    tb_sw.close()
 
 
 if __name__ == '__main__':
