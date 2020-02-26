@@ -11,16 +11,17 @@
 
 source activate gg
 
-python -BW ignore main.py -ds GitGraph \
-                          -m TADistMult \
-                          -d 0.5 \
-                          -es 512 \
-                          -mr 6 \
-                          -lr 1e-5 \
-                          -e 1000 \
-                          -bs 16384 \
-                          -ns 2 \
-                          -f \
-                          -md head \
-                          -s 2020 \
-                          -lf 100
+python -BW ignore -m torch.utils.bottleneck main.py \
+       -ds GitGraph \
+       -m TADistMult \
+       -d 0.5 \
+       -es 512 \
+       -mr 6 \
+       -lr 1e-5 \
+       -e 1000 \
+       -bs 16384 \
+       -ns 2 \
+       -f \
+       -md head \
+       -s 2020 \
+       -lf 100
