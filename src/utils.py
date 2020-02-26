@@ -160,7 +160,7 @@ def _p(args):
 
 
 def evaluate(args, b, mdl, mtr, dvc):
-    ts_r = torch.LongTensor(b[:, 1:2]).squeeze().to(dvc)
+    ts_r = torch.LongTensor(b[:, 1]).to(dvc)
     ts_t = torch.LongTensor(b[:, 3:]).squeeze().to(dvc)
 
     if args.model == 'TTransE':
