@@ -49,7 +49,6 @@ def get_args():
     argparser.add_argument('-d', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding_size', type=int, default=128)
-    argparser.add_argument('-l', '--lmbda', type=float, default=0.01)
     argparser.add_argument('-mr', '--margin', type=int, default=1)
     argparser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
     argparser.add_argument('-e', '--epochs', type=int, default=1000)
@@ -130,13 +129,7 @@ def get_loss_f(args):
     return nn.MarginRankingLoss(args.margin)
 
 
-def get_reg_f(args, dvc):
-    if args.model == 'TTransE':
-        return lambda x: torch.sum(torch.max(torch.sum(x ** 2, dim=1) - torch.tensor(1.0), torch.tensor(0.0))).to(dvc)
-    return lambda x: torch.mean(x ** 2).to(dvc)
-
-
-def get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc):
+def get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc):
     pos_smp, neg_smp = data.prepare(args, b, tr, tr_ts)
 
     pos_s = torch.LongTensor(pos_smp[:, 0]).to(dvc)
@@ -152,24 +145,12 @@ def get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc):
         mdl.zero_grad()
     pos, neg = mdl(pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t)
 
-    e_embed = mdl.module.e_embed(torch.cat([pos_s, pos_o, neg_s, neg_o]))
-    regu = reg_f(e_embed)
-
-    if args.model == 'TTransE':
-        r_embed = mdl.module.r_embed(torch.cat([pos_r, neg_r]))
-        t_embed = mdl.module.t_embed(torch.cat([pos_t, neg_t]))
-        regu += reg_f(r_embed) + reg_f(t_embed)
-    else:
-        rt_embed = mdl.module.rt_embed(torch.cat([pos_r, neg_r]), torch.cat([pos_t, neg_t]))
-        regu += reg_f(rt_embed)
-
     if args.model == 'TADistMult':
         x = torch.cat([pos, neg])
         y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
         loss = loss_f(x, y)
     else:
         loss = loss_f(pos, neg, (-1) * torch.ones(pos.shape + neg.shape))
-    loss += args.lmbda * regu
 
     return loss
 

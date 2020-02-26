@@ -17,7 +17,6 @@ def main():
 
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln).to(dvc)
     loss_f = utils.get_loss_f(args).to(dvc)
-    reg_f = utils.get_reg_f(args, dvc)
     optim = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate)
 
     if not args.test:
@@ -30,7 +29,7 @@ def main():
             st_tm = time.time()
             mdl.train()
             for b in tr_bs:
-                loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc)
+                loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
                 loss.backward()
                 optim.step()
                 tr_loss += loss.item()
@@ -42,7 +41,7 @@ def main():
                 st_tm = time.time()
                 mdl.eval()
                 for b in vd_bs:
-                    loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc)
+                    loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
                     vd_loss += loss.item()
 
                 print(f'[{time.time() - st_tm}] Epoch {epoch + 1}/{args.epochs} validation loss: {vd_loss / len(vd_bs)}')

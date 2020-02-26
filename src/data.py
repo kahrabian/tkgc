@@ -46,7 +46,7 @@ def _corrupt(args, pos, tr, tr_ts):
         neg[i * pos.shape[0]:(i + 1) * pos.shape[0]] = pos.copy()
         for x in neg[i * pos.shape[0]:(i + 1) * pos.shape[0]]:
             idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
-            ss = tr[:, idx].copy()
+            ss = tr[:, idx].copy()  # NOTE: Only choose from existing head/tail space
             s = np.random.choice(ss, 1)[0]
             while s == x[idx] or (args.filter and _check(x, idx, s, tr_ts)):
                 s = np.random.choice(ss, 1)[0]
@@ -55,8 +55,9 @@ def _corrupt(args, pos, tr, tr_ts):
 
 
 def prepare(args, b, tr, tr_ts):
-    pos = b.copy()
-    neg = _corrupt(args, pos, tr, tr_ts)
+    _pos = b.copy()
+    neg = _corrupt(args, _pos, tr, tr_ts)
+    pos = np.repeat(_pos, args.negative_samples, axis=0) if args.model != 'TDistMult' else _pos
     if args.model != 'TTransE':
         pos = np.expand_dims(pos, axis=2)
         neg = np.expand_dims(neg, axis=2)
