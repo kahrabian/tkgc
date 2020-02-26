@@ -13,7 +13,7 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    tr, vd, ts, tr_ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args)
+    tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args)
 
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln).to(dvc)
     loss_f = utils.get_loss_f(args).to(dvc)
@@ -41,7 +41,7 @@ def main():
                 st_tm = time.time()
                 mdl.eval()
                 for b in vd_bs:
-                    loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
+                    loss = utils.get_loss(args, b, np.concatenate([tr, vd]), tr_ts.union(vd_ts), mdl, loss_f, dvc)
                     vd_loss += loss.item()
 
                 print(f'[{time.time() - st_tm}] Epoch {epoch + 1}/{args.epochs} validation loss: {vd_loss / len(vd_bs)}')

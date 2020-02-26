@@ -66,11 +66,9 @@ def get_args():
     return args
 
 
-def _load(pth, *fns):
-    qs = []
-    for fn in fns:
-        with open(os.path.join(pth, fn), 'r') as f:
-            qs += list(map(lambda x: x.split()[:4], f.read().split('\n')[:-1]))
+def _load(pth, fn):
+    with open(os.path.join(pth, fn), 'r') as f:
+        qs = list(map(lambda x: x.split()[:4], f.read().split('\n')[:-1]))
     return np.array(qs)
 
 
@@ -79,17 +77,20 @@ def get_data(args):
     tr = _load(bpath, 'train.txt')
     vd = _load(bpath, 'valid.txt')
     ts = _load(bpath, 'test.txt')
-    al = _load(bpath, 'train.txt', 'valid.txt', 'test.txt')  # NOTE: Train data might be incomplete!
 
     qf = [None, None, None, lambda x: data.format_time(args, x, re.compile(r'[-T:Z]'))]
     tr = data.format(tr, qf)
     vd = data.format(vd, qf)
     ts = data.format(ts, qf)
-    al = data.format(al, qf)
 
+    al = np.concatenate([tr, vd, ts])
     e_idx = data.index(al[:, [0, 2]])
     r_idx = data.index(al[:, 1])
     t_idx = data.index(al[:, 3:])
+
+    e_idx_ln = len(e_idx)
+    r_idx_ln = len(r_idx)
+    t_idx_ln = len(t_idx)
 
     qt = [e_idx, r_idx, e_idx] + [t_idx, ] * (1 if args.model == 'TTransE' else 5)
     tr = data.transform(tr, qt)
@@ -97,12 +98,9 @@ def get_data(args):
     ts = data.transform(ts, qt)
 
     tr_ts = {tuple(x) for x in tr[:, :3]}
+    vd_ts = {tuple(x) for x in vd[:, :3]}
 
-    e_idx_ln = len(e_idx)
-    r_idx_ln = len(r_idx)
-    t_idx_ln = len(t_idx)
-
-    return tr, vd, ts, tr_ts, e_idx_ln, r_idx_ln, t_idx_ln
+    return tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln
 
 
 def get_p(args):
