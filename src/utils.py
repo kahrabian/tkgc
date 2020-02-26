@@ -25,7 +25,7 @@ class Metric(object):
         h_1 = self.h_1 / self.cnt
         h_3 = self.h_3 / self.cnt
         h_10 = self.h_10 / self.cnt
-        return f'H@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}'
+        return f'\nH@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}'
 
     def update(self, r):
         self.cnt += 1

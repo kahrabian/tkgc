@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import torch
+from tqdm import tqdm
 
 import src.data as data
 import src.utils as utils
@@ -28,13 +29,18 @@ def main():
             tr_loss = 0
             st_tm = time.time()
             mdl.train()
-            for b in tr_bs:
-                loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
-                loss.backward()
-                optim.step()
-                tr_loss += loss.item()
+            with tqdm(total=len(tr_bs), desc=f'Epoch {epoch + 1}/{args.epochs}') as t:
+                for i, b in enumerate(tr_bs):
+                    loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
+                    loss.backward()
+                    optim.step()
+                    tr_loss += loss.item()
+                    t.set_postfix(loss=f'{tr_loss / (i + 1):.4f}')
+                    t.update()
 
-            print(f'[{time.time() - st_tm}] Epoch {epoch + 1}/{args.epochs} training loss: {tr_loss / len(tr_bs)}')
+            el_tm = time.time() - st_tm
+            tr_loss /= len(tr_bs)
+            print(f'Epoch {epoch + 1}/{args.epochs}: training_loss={tr_loss:.4f}, time={el_tm:.4f}')
 
             if (epoch + 1) % args.log_frequency == 0 or epoch == (args.epochs - 1):
                 vd_loss = 0
@@ -44,7 +50,9 @@ def main():
                     loss = utils.get_loss(args, b, np.concatenate([tr, vd]), tr_ts.union(vd_ts), mdl, loss_f, dvc)
                     vd_loss += loss.item()
 
-                print(f'[{time.time() - st_tm}] Epoch {epoch + 1}/{args.epochs} validation loss: {vd_loss / len(vd_bs)}')
+                el_tm = time.time() - st_tm
+                vd_loss /= len(vd_bs)
+                print(f'Epoch {epoch + 1}/{args.epochs}: validation_loss={vd_loss:.4f}, time={el_tm:.4f}')
 
                 utils.save(args, mdl)
 
