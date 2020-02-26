@@ -29,7 +29,7 @@ def main():
             tr_loss = 0
             st_tm = time.time()
             mdl.train()
-            for i, b in enumerate(tr_bs):
+            for b in tr_bs:
                 loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc)
                 loss.backward()
                 optim.step()
@@ -41,7 +41,7 @@ def main():
                 vd_loss = 0
                 st_tm = time.time()
                 mdl.eval()
-                for i, b in enumerate(vd_bs):
+                for b in vd_bs:
                     loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, reg_f, dvc)
                     vd_loss += loss.item()
 

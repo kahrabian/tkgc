@@ -40,7 +40,7 @@ def _check(x, idx, s, tr_ts):
     return tuple(x) in tr_ts
 
 
-def _corrupt(args, pos, tr, tr_ts, fil):
+def _corrupt(args, pos, tr, tr_ts):
     neg = np.zeros((pos.shape[0] * args.negative_samples, pos.shape[1]), dtype=np.int_)
     for i in range(args.negative_samples):
         neg[i * pos.shape[0]:(i + 1) * pos.shape[0]] = pos.copy()
@@ -48,16 +48,16 @@ def _corrupt(args, pos, tr, tr_ts, fil):
             idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
             ss = tr[:, idx].copy()
             s = np.random.choice(ss, 1)[0]
-            while s == x[idx] or (fil and _check(x, idx, s, tr_ts)):
+            while s == x[idx] or (args.filter and _check(x, idx, s, tr_ts)):
                 s = np.random.choice(ss, 1)[0]
             x[idx] = s
     return neg
 
 
-def prepare(args, b, tr, tr_ts, sz, fil, rnd, exp=False):
-    pos = b[np.random.choice(b.shape[0], sz)].copy() if rnd else b.copy()
-    neg = _corrupt(args, pos, tr, tr_ts, fil)
-    if exp:
+def prepare(args, b, tr, tr_ts):
+    pos = b.copy()
+    neg = _corrupt(args, pos, tr, tr_ts)
+    if args.model != 'TTransE':
         pos = np.expand_dims(pos, axis=2)
         neg = np.expand_dims(neg, axis=2)
     return pos, neg
