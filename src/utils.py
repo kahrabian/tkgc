@@ -148,7 +148,7 @@ def get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc):
         y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
         loss = loss_f(x, y)
     else:
-        loss = loss_f(pos, neg, (-1) * torch.ones(pos.shape + neg.shape))
+        loss = loss_f(pos, neg, (-1) * torch.ones(pos.shape + neg.shape).to(dvc))
 
     return loss
 
