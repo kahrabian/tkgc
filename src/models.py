@@ -17,9 +17,6 @@ class TTransE(nn.Module):
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
-        self.e_embed.weight.data = F.normalize(self.e_embed.weight, p=2, dim=1)
-        self.r_embed.weight.data = F.normalize(self.r_embed.weight, p=2, dim=1)
-        self.t_embed.weight.data = F.normalize(self.t_embed.weight, p=2, dim=1)
 
     def forward(self, pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t):
         pos_s_e = self.e_embed(pos_s)
@@ -49,11 +46,11 @@ class TAX(nn.Module):
         self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True)
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
-                nn.init.xavier_uniform_(param.data)
+                nn.init.xavier_uniform_(param)
             elif 'weight_hh' in name:
-                nn.init.orthogonal_(param.data)
+                nn.init.orthogonal_(param)
             elif 'bias' in name:
-                nn.init.zeros_(param.data)
+                nn.init.zeros_(param)
 
         self.e_embed = nn.Embedding(e_cnt, args.embedding_size)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size)
@@ -61,9 +58,6 @@ class TAX(nn.Module):
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
-        self.e_embed.weight.data = F.normalize(self.e_embed.weight, p=2, dim=1)
-        self.r_embed.weight.data = F.normalize(self.r_embed.weight, p=2, dim=1)
-        self.t_embed.weight.data = F.normalize(self.t_embed.weight, p=2, dim=1)
 
     def rt_embed(self, r, t):
         r_e = self.r_embed(r)

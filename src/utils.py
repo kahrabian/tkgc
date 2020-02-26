@@ -176,9 +176,9 @@ def evaluate(args, b, mdl, mtr, dvc):
             s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
             ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).argsort(dim=1, descending=True).numpy().T
+            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).numpy()
         for i, s in enumerate(b[:, 0]):
-            mtr.update(np.searchsorted(s_r[i], s) + 1)
+            mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
         ts_s = torch.LongTensor(b[:, 0]).to(dvc)
@@ -190,7 +190,7 @@ def evaluate(args, b, mdl, mtr, dvc):
             srt = s_embed + rt_embed
             o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).numpy()
         for i, o in enumerate(b[:, 2]):
-            mtr.update(np.searchsorted(o_r[i], o) + 1)
+            mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 
 def save(args, mdl):
