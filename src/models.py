@@ -80,12 +80,12 @@ class TAX(nn.Module):
         neg_o_e = self.e_embed(neg_o).squeeze()
         neg_rt_e = self.rt_embed(neg_r, neg_t).squeeze()
 
-        pos_s_e = F.dropout(pos_s_e, p=self.dropout)
-        pos_o_e = F.dropout(pos_o_e, p=self.dropout)
-        pos_rt_e = F.dropout(pos_rt_e, p=self.dropout)
-        neg_s_e = F.dropout(neg_s_e, p=self.dropout)
-        neg_o_e = F.dropout(neg_o_e, p=self.dropout)
-        neg_rt_e = F.dropout(neg_rt_e, p=self.dropout)
+        pos_s_e = F.dropout(pos_s_e, p=self.dropout, training=self.training)
+        pos_o_e = F.dropout(pos_o_e, p=self.dropout, training=self.training)
+        pos_rt_e = F.dropout(pos_rt_e, p=self.dropout, training=self.training)
+        neg_s_e = F.dropout(neg_s_e, p=self.dropout, training=self.training)
+        neg_o_e = F.dropout(neg_o_e, p=self.dropout, training=self.training)
+        neg_rt_e = F.dropout(neg_rt_e, p=self.dropout, training=self.training)
 
         pos = self._score(pos_s_e, pos_o_e, pos_rt_e)
         neg = self._score(neg_s_e, neg_o_e, neg_rt_e)
