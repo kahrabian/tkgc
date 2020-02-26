@@ -142,27 +142,13 @@ def get_loss_f(args):
     return nn.MarginRankingLoss(args.margin1)
 
 
-def get_loss_g(args):
-    return nn.MarginRankingLoss(args.margin2)
-
-
 def get_reg_f(args, dvc):
     if args.model == 'TTransE':
         return lambda x: torch.sum(torch.max(torch.sum(x ** 2, dim=1) - torch.tensor(1.0), torch.tensor(0.0))).to(dvc)
     return lambda x: torch.mean(x ** 2).to(dvc)
 
 
-def _rr_fil(x):
-    # NOTE: The second constraint avoid the matrix converging to I
-    return x[0][0] == x[1][0] and x[0][1] != x[1][1]
-
-
-def _rr(smp):
-    return np.array(list(map(lambda x: (x[0][1], x[1][1]) if x[0][2] < x[1][2] else (x[1][1], x[0][1]),
-                             filter(_rr_fil, combinations(smp, 2)))))
-
-
-def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
+def get_loss(args, b, al, al_ts, mdl, loss_f, reg_f, dvc):
     exp = args.model != 'TTransE'
     pos_smp, neg_smp = data.prepare(args, b, al, al_ts, args.batch_size, args.filter, not mdl.training, exp=exp)
 
@@ -177,42 +163,25 @@ def get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc):
 
     if mdl.training:
         mdl.zero_grad()
-    if args.model == 'TTransE':
-        pos, neg = mdl(pos_s, pos_r, pos_o, neg_s, neg_r, neg_o)
-    else:
-        pos, neg = mdl(pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t)
+    pos, neg = mdl(pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t)
 
     e_embed = mdl.module.e_embed(torch.cat([pos_s, pos_o, neg_s, neg_o]))
     regu = reg_f(e_embed)
 
     if args.model == 'TTransE':
         r_embed = mdl.module.r_embed(torch.cat([pos_r, neg_r]))
-        r_trans = mdl.module.t_trans(r_embed)
-        regu += reg_f(r_embed) + reg_f(r_trans)
+        t_embed = mdl.module.t_embed(torch.cat([pos_t, neg_t]))
+        regu += reg_f(r_embed) + reg_f(t_embed)
     else:
         rt_embed = mdl.module.rt_embed(torch.cat([pos_r, neg_r]), torch.cat([pos_t, neg_t]))
         regu += reg_f(rt_embed)
 
-    x = torch.cat([pos, neg])
-    y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
-
     if args.model == 'TADistMult':
+        x = torch.cat([pos, neg])
+        y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
         loss = loss_f(x, y)
     else:
-        loss = loss_f(x, y, (-1) * torch.ones(y.shape))
-        if args.model == 'TTransE':
-            pos_rr = _rr(pos_smp[:, [0, 1, 3]].squeeze())
-            if pos_rr.shape[0] != 0:
-                pos_ri = torch.LongTensor(pos_rr[:, 0:1]).to(dvc)
-                pos_rj = torch.LongTensor(pos_rr[:, 1:2]).to(dvc)
-
-                ri_embed = mdl.module.r_embed(pos_ri)
-                rj_embed = mdl.module.r_embed(pos_rj)
-
-                ri_trans = mdl.module.t_trans(ri_embed)
-                rj_trans = mdl.module.t_trans(rj_embed)
-
-                loss += loss_g(ri_trans, rj_trans, (-1) * torch.ones(ri_trans.shape))
+        loss = loss_f(pos, neg, (-1) * torch.ones(pos.shape + neg.shape))
     loss += args.lmbda * regu
 
     return loss
@@ -227,7 +196,7 @@ def evaluate(args, b, mdl, mtr, dvc):
     ts_t = torch.LongTensor(b[:, 3:]).to(dvc)
 
     if args.model == 'TTransE':
-        rt_embed = mdl.module.r_embed(ts_r).squeeze()
+        rt_embed = mdl.module.r_embed(ts_r).squeeze() + mdl.module.t_embed(ts_t).squeeze()
     else:
         rt_embed = mdl.module.rt_embed(ts_r, ts_t)
 
@@ -239,7 +208,7 @@ def evaluate(args, b, mdl, mtr, dvc):
             s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
             ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).detach().numpy()
+            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).argsort(dim=1, descending=True).numpy().T
         for i, s in enumerate(b[:, 0]):
             mtr.update(np.searchsorted(s_r[i], s) + 1)
 
@@ -251,7 +220,7 @@ def evaluate(args, b, mdl, mtr, dvc):
             o_r = torch.matmul(srt, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
             srt = s_embed + rt_embed
-            o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).detach().numpy()
+            o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).numpy()
         for i, o in enumerate(b[:, 2]):
             mtr.update(np.searchsorted(o_r[i], o) + 1)
 

@@ -4,8 +4,8 @@ import torch.nn.functional as F
 
 
 class TTransE(nn.Module):
-    def _score(self, s, o, r):
-        return torch.norm(s + r - o, p=1 if self.l1 else 2, dim=1)
+    def _score(self, s, o, r, t):
+        return torch.norm(s + r + t - o, p=1 if self.l1 else 2, dim=1)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super(TTransE, self).__init__()
@@ -13,25 +13,27 @@ class TTransE(nn.Module):
 
         self.e_embed = nn.Embedding(e_cnt, args.embedding_size)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size)
+        self.t_embed = nn.Embedding(t_cnt, args.embedding_size)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
+        nn.init.xavier_uniform_(self.t_embed.weight)
         self.e_embed.weight.data = F.normalize(self.e_embed.weight, p=2, dim=1)
         self.r_embed.weight.data = F.normalize(self.r_embed.weight, p=2, dim=1)
+        self.t_embed.weight.data = F.normalize(self.t_embed.weight, p=2, dim=1)
 
-        self.t_trans = nn.Linear(args.embedding_size, args.embedding_size, bias=False)
-        nn.init.uniform_(self.t_trans.weight)
-
-    def forward(self, pos_s, pos_r, pos_o, neg_s, neg_r, neg_o):
+    def forward(self, pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t):
         pos_s_e = self.e_embed(pos_s)
         pos_o_e = self.e_embed(pos_o)
         pos_r_e = self.r_embed(pos_r)
+        pos_t_e = self.t_embed(pos_t)
 
         neg_s_e = self.e_embed(neg_s)
         neg_o_e = self.e_embed(neg_o)
         neg_r_e = self.r_embed(neg_r)
+        neg_t_e = self.t_embed(pos_t)
 
-        pos = self._score(pos_s_e, pos_o_e, pos_r_e)
-        neg = self._score(neg_s_e, neg_o_e, neg_r_e)
+        pos = self._score(pos_s_e, pos_o_e, pos_r_e, pos_t_e)
+        neg = self._score(neg_s_e, neg_o_e, neg_r_e, neg_t_e)
 
         return pos, neg
 

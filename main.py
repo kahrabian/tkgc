@@ -17,7 +17,6 @@ def main():
 
     mdl = utils.get_model(args, e_idx_ln, len(al), t_idx_ln).to(dvc)
     loss_f = utils.get_loss_f(args).to(dvc)
-    loss_g = utils.get_loss_g(args).to(dvc)  # NOTE: Only for TTransE model
     reg_f = utils.get_reg_f(args, dvc)
     optim = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate)
 
@@ -31,7 +30,7 @@ def main():
             st_tm = time.time()
             mdl.train()
             for i, b in enumerate(tr_bs):
-                loss = utils.get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc)
+                loss = utils.get_loss(args, b, al, al_ts, mdl, loss_f, reg_f, dvc)
                 loss.backward()
                 optim.step()
                 tr_loss += loss.item()
@@ -43,7 +42,7 @@ def main():
                 st_tm = time.time()
                 mdl.eval()
                 for i, b in enumerate(vd_bs):
-                    loss = utils.get_loss(args, b, al, al_ts, mdl, loss_f, loss_g, reg_f, dvc)
+                    loss = utils.get_loss(args, b, al, al_ts, mdl, loss_f, reg_f, dvc)
                     vd_loss += loss.item()
 
                 print(f'[{time.time() - st_tm}] Epoch {epoch + 1}/{args.epochs} validation loss: {vd_loss / len(vd_bs)}')
