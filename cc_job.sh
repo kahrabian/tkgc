@@ -25,4 +25,5 @@ python -BW ignore -m torch.utils.bottleneck main.py \
        -f \
        -md head \
        -s 2020 \
-       -lf 100
+       -lf 100 \
+       -w 20
