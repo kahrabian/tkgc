@@ -6,6 +6,7 @@
 #SBATCH --mem=93G
 #SBATCH --time=3-0
 #SBATCH --output=./logs/%x-%j.out
+#SBATCH --error=./logs/%x-%j.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=kian.ahrabian@mail.mcgill.ca
 

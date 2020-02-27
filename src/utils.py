@@ -137,14 +137,14 @@ def get_loss_f(args):
 def get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc):
     pos_smp, neg_smp = data.prepare(args, b, tr, tr_ts)
 
-    pos_s = torch.LongTensor(pos_smp[:, 0]).to(dvc)
-    pos_r = torch.LongTensor(pos_smp[:, 1]).to(dvc)
-    pos_o = torch.LongTensor(pos_smp[:, 2]).to(dvc)
-    pos_t = torch.LongTensor(pos_smp[:, 3:]).squeeze().to(dvc)
-    neg_s = torch.LongTensor(neg_smp[:, 0]).to(dvc)
-    neg_r = torch.LongTensor(neg_smp[:, 1]).to(dvc)
-    neg_o = torch.LongTensor(neg_smp[:, 2]).to(dvc)
-    neg_t = torch.LongTensor(neg_smp[:, 3:]).squeeze().to(dvc)
+    pos_s = torch.tensor(pos_smp[:, 0]).long().to(dvc)
+    pos_r = torch.tensor(pos_smp[:, 1]).long().to(dvc)
+    pos_o = torch.tensor(pos_smp[:, 2]).long().to(dvc)
+    pos_t = torch.tensor(pos_smp[:, 3:]).long().squeeze().to(dvc)
+    neg_s = torch.tensor(neg_smp[:, 0]).long().to(dvc)
+    neg_r = torch.tensor(neg_smp[:, 1]).long().to(dvc)
+    neg_o = torch.tensor(neg_smp[:, 2]).long().to(dvc)
+    neg_t = torch.tensor(neg_smp[:, 3:]).long().squeeze().to(dvc)
 
     if mdl.training:
         mdl.zero_grad()
@@ -165,8 +165,8 @@ def _p(args):
 
 
 def evaluate(args, b, mdl, mtr, dvc):
-    ts_r = torch.LongTensor(b[:, 1]).to(dvc)
-    ts_t = torch.LongTensor(b[:, 3:]).squeeze().to(dvc)
+    ts_r = torch.tensor(b[:, 1]).long().to(dvc)
+    ts_t = torch.tensor(b[:, 3:]).long().squeeze().to(dvc)
 
     if args.model == 'TTransE':
         rt_embed = mdl.module.r_embed(ts_r) + mdl.module.t_embed(ts_t)
@@ -174,7 +174,7 @@ def evaluate(args, b, mdl, mtr, dvc):
         rt_embed = mdl.module.rt_embed(ts_r, ts_t)
 
     if args.mode != 'tail':
-        ts_o = torch.LongTensor(b[:, 2]).to(dvc)
+        ts_o = torch.tensor(b[:, 2]).long().to(dvc)
         o_embed = mdl.module.e_embed(ts_o)
         if args.model == 'TADistMult':
             ort = rt_embed * o_embed
@@ -186,7 +186,7 @@ def evaluate(args, b, mdl, mtr, dvc):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
-        ts_s = torch.LongTensor(b[:, 0]).to(dvc)
+        ts_s = torch.tensor(b[:, 0]).long().to(dvc)
         s_embed = mdl.module.e_embed(ts_s)
         if args.model == 'TADistMult':
             srt = s_embed * rt_embed

@@ -1,5 +1,7 @@
-import time
+import logging
 import numpy as np
+import sys
+import time
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -8,10 +10,19 @@ import src.data as data
 import src.utils as utils
 
 
+def _logger():
+    logging.basicConfig(format='%(message)s', stream=sys.stdout, level=logging.INFO)
+    return logging.getLogger()
+
+
 def main():
-    dvc = 'cuda' if torch.cuda.is_available() else 'cpu'
+    logger = _logger()
+
+    dvc = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    logger.info(f'device: {dvc}\n')
 
     args = utils.get_args()
+    logger.info('\n'.join(map(lambda x: f'{x[0]}: {x[1]}', sorted(vars(args).items()))) + '\n')
 
     torch.manual_seed(args.seed)
 
@@ -46,7 +57,7 @@ def main():
 
             el_tm = time.time() - st_tm
             tr_loss /= len(tr_bs)
-            print(f'Epoch {epoch + 1}/{args.epochs}: training_loss={tr_loss:.4f}, time={el_tm:.4f}')
+            logger.info(f'Epoch {epoch + 1}/{args.epochs}: training_loss={tr_loss:.4f}, time={el_tm:.4f}')
 
             tb_sw.add_scalar(f'loss/train', tr_loss, epoch)
 
@@ -60,7 +71,7 @@ def main():
 
                 el_tm = time.time() - st_tm
                 vd_loss /= len(vd_bs)
-                print(f'Epoch {epoch + 1}/{args.epochs}: validation_loss={vd_loss:.4f}, time={el_tm:.4f}')
+                logger.info(f'Epoch {epoch + 1}/{args.epochs}: validation_loss={vd_loss:.4f}, time={el_tm:.4f}')
 
                 tb_sw.add_scalar(f'loss/validation', vd_loss, epoch)
 
@@ -71,7 +82,7 @@ def main():
     ts_bs = data.split(ts if args.test else vd, args.batch_size)
     for b in ts_bs:
         utils.evaluate(args, b, mdl, mtr, dvc)
-    print(mtr)
+    logger.info(mtr)
 
     tb_sw.add_hparams(vars(args), dict(mtr))
 
