@@ -2,6 +2,7 @@ import math
 import numpy as np
 import re
 from itertools import chain
+from multiprocessing import Process, Queue
 
 
 def split(d, sz):
@@ -40,22 +41,31 @@ def _check(x, idx, s, tr_ts):
     return tuple(x) in tr_ts
 
 
-def _corrupt(args, pos, tr, tr_ts):
-    neg = np.zeros((pos.shape[0] * args.negative_samples, pos.shape[1]), dtype=np.int_)
-    for i in range(args.negative_samples):
-        neg[i * pos.shape[0]:(i + 1) * pos.shape[0]] = pos.copy()
-        for x in neg[i * pos.shape[0]:(i + 1) * pos.shape[0]]:
-            idx = 0 if np.random.random() < 0.5 else 2  # NOTE: Head vs Tail
-            ss = tr[:, idx].copy()  # NOTE: Only choose from existing head/tail space
+def _corrupt(q, prt, args, neg, tr, tr_ts):
+    for i, x in enumerate(neg):
+        idx = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
+        ss = tr[:, idx].copy()  # NOTE: Only choose from existing head/tail space
+        s = np.random.choice(ss, 1)[0]  # NOTE: Use while/random instead of for for speed-up
+        while s == x[idx] or (args.filter and _check(x, idx, s, tr_ts)):
             s = np.random.choice(ss, 1)[0]
-            while s == x[idx] or (args.filter and _check(x, idx, s, tr_ts)):
-                s = np.random.choice(ss, 1)[0]
-            x[idx] = s
+        neg[i][idx] = s
+    q.put((prt, neg))
+
+
+def _negative_sample(args, pos, tr, tr_ts):
+    ps = []
+    q = Queue(args.workers)
+    for i, pos_sp in enumerate(np.array_split(pos.copy(), args.workers)):
+        p = Process(target=_corrupt, args=(q, i, args, pos_sp, tr, tr_ts))
+        p.start()
+        ps.append(p)
+    for p in ps:
+        p.join()
+    neg = np.concatenate(list(map(lambda x: x[1], sorted([q.get() for _ in range(args.workers)], key=lambda x: x[0]))))
     return neg
 
 
 def prepare(args, b, tr, tr_ts):
-    _pos = b.copy()
-    neg = _corrupt(args, _pos, tr, tr_ts)
-    pos = np.repeat(_pos, args.negative_samples, axis=0) if args.model != 'TDistMult' else _pos
+    pos = np.repeat(b.copy(), args.negative_samples, axis=0) if args.model != 'TDistMult' else b.copy()
+    neg = _negative_sample(args, pos, tr, tr_ts)
     return pos, neg

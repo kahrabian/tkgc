@@ -67,6 +67,7 @@ def get_args():
     argparser.add_argument('-r', '--resume', default=False, action='store_true')
     argparser.add_argument('-s', '--seed', type=int, default=2020)
     argparser.add_argument('-lf', '--log_frequency', type=int, default=100)
+    argparser.add_argument('-w', '--workers', type=int, default=1)
 
     args = argparser.parse_args()
 
