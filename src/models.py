@@ -7,13 +7,13 @@ class TTransE(nn.Module):
     def _score(self, s, o, r, t):
         return torch.norm(s + r + t - o, p=1 if self.l1 else 2, dim=1)
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
         super(TTransE, self).__init__()
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size)
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size)
-        self.t_embed = nn.Embedding(t_cnt, args.embedding_size)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(dvc)
+        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
@@ -39,11 +39,11 @@ class TAX(nn.Module):
     def _score(self, s, o, rt):
         raise NotImplementedError(f'this method should be implemented in {self.__class__}')
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
         super(TAX, self).__init__()
         self.dropout = args.dropout
 
-        self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True)
+        self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(dvc)
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
                 nn.init.xavier_uniform_(param)
@@ -52,9 +52,9 @@ class TAX(nn.Module):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size)
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size)
-        self.t_embed = nn.Embedding(t_cnt, args.embedding_size)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(dvc)
+        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)

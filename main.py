@@ -28,7 +28,7 @@ def main():
 
     tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args)
 
-    mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln).to(dvc)
+    mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln, dvc).to(dvc)
     loss_f = utils.get_loss_f(args).to(dvc)
     optim = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate)
 

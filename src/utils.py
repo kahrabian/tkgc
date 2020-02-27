@@ -119,13 +119,13 @@ def get_p(args):
     return p
 
 
-def get_model(args, e_cnt, r_cnt, t_cnt):
+def get_model(args, e_cnt, r_cnt, t_cnt, dvc):
     p = get_p(args)
     if args.resume:
         if not os.path.exists(p):
             raise FileNotFoundError('can\'t find the saved model with the given params')
         return nn.DataParallel(torch.load(p))
-    return nn.DataParallel(getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt))
+    return nn.DataParallel(getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt, dvc))
 
 
 def get_loss_f(args):
