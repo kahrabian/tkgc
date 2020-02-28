@@ -97,13 +97,13 @@ class TADistMult(TAX):
     def _score(self, s, o, rt):
         return torch.sum(s * o * rt, dim=1)
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
-        super(TADistMult, self).__init__(args, e_cnt, r_cnt, t_cnt)
+    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
+        super(TADistMult, self).__init__(args, e_cnt, r_cnt, t_cnt, dvc)
 
 
 class TATransE(TAX):
     def _score(self, s, o, rt):
         return torch.norm(s + rt - o, p=2, dim=1)
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
-        super(TATransE, self).__init__(args, e_cnt, r_cnt, t_cnt)
+    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
+        super(TATransE, self).__init__(args, e_cnt, r_cnt, t_cnt, dvc)
