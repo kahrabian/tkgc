@@ -178,10 +178,10 @@ def evaluate(args, b, mdl, mtr, dvc):
         o_embed = mdl.module.e_embed(ts_o)
         if args.model == 'TADistMult':
             ort = rt_embed * o_embed
-            s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
             ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).numpy()
+            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
         for i, s in enumerate(b[:, 0]):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
@@ -190,10 +190,10 @@ def evaluate(args, b, mdl, mtr, dvc):
         s_embed = mdl.module.e_embed(ts_s)
         if args.model == 'TADistMult':
             srt = s_embed * rt_embed
-            o_r = torch.matmul(srt, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            o_r = torch.matmul(srt, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
             srt = s_embed + rt_embed
-            o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).numpy()
+            o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
         for i, o in enumerate(b[:, 2]):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
