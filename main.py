@@ -66,7 +66,7 @@ def main():
                 st_tm = time.time()
                 mdl.eval()
                 for b in vd_bs:
-                    loss = utils.get_loss(args, b, np.concatenate([tr, vd]), tr_ts.union(vd_ts), mdl, loss_f, dvc)
+                    loss = utils.get_loss(args, b, np.concatenate([tr, vd]), {**tr_ts, **vd_ts}, mdl, loss_f, dvc)
                     vd_loss += loss.item()
 
                 el_tm = time.time() - st_tm
