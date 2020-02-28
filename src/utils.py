@@ -104,8 +104,8 @@ def get_data(args):
     vd = data.transform(vd, qt)
     ts = data.transform(ts, qt)
 
-    tr_ts = {tuple(x) for x in tr[:, :3]}
-    vd_ts = {tuple(x) for x in vd[:, :3]}
+    tr_ts = {tuple(x): True for x in tr[:, :3]}
+    vd_ts = {tuple(x): True for x in vd[:, :3]}
 
     return tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln
 

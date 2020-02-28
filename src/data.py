@@ -37,7 +37,7 @@ def transform(d, idxs):
 def _check(x, idx, s, tr_ts):
     x = x.copy()
     x[idx] = s
-    return tuple(x) in tr_ts
+    return tr_ts.get(tuple(x), False)
 
 
 def _corrupt(args, pos, tr, tr_ts):
