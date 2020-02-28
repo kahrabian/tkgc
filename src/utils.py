@@ -181,7 +181,8 @@ def evaluate(args, b, mdl, mtr, dvc):
             s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
             ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
+            s_r = torch.cdist(
+                mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
         for i, s in enumerate(b[:, 0]):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
