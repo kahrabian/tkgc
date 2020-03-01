@@ -52,19 +52,19 @@ def main():
     tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args)
 
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln, dvc)
+    opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    if amp is not None:
+        mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
     if tdist.is_available():
         mdl.to(dvc)
         mdl = aDDP(mdl) if torch.cuda.is_available() else tDDP(mdl)
     else:
         mdl = nn.DataParallel(mdl)
         mdl.to(dvc)
-    opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     if args.resume != '':
         st_e, bst_ls = utils.resume(args, mdl, opt, amp, dvc)
     else:
         st_e = 1
-    if amp is not None:
-        mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
     ls_f = utils.get_loss_f(args).to(dvc)
 
     if args.local_rank == 0:
