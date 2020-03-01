@@ -116,7 +116,7 @@ def resume(args, mdl, opt, amp, dvc):
     ckpt = torch.load(args.resume, map_location=dvc)
     mdl.load_state_dict(ckpt['mdl'])
     opt.load_state_dict(ckpt['opt'])
-    if amp is not None:
+    if torch.cuda.is_available():
         amp.load_state_dict(ckpt['amp'])
     return ckpt['e'], ckpt['bst_ls']
 
@@ -185,7 +185,7 @@ def evaluate(args, b, mdl, mtr, dvc):
 
 def checkpoint(args, e, mdl, opt, amp, bst_ls, is_bst):
     ckpt = {'e': e, 'mdl': mdl.state_dict(), 'opt': opt.state_dict(), 'bst_ls': bst_ls}
-    if amp is not None:
+    if torch.cuda.is_available():
         ckpt['amp'] = amp.state_dict()
 
     bpth = os.path.join('./models', args.dataset)

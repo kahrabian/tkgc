@@ -6,10 +6,10 @@ import torch.distributed as tdist
 import torch.nn as nn
 try:
     from apex import amp
+    from apex import optimizers as apex_optim
     from apex.parallel import DistributedDataParallel as aDDP
 except ImportError:
     amp = None
-    aDPP = None
 from torch.backends import cudnn
 from torch.nn.parallel import DistributedDataParallel as tDDP
 from torch.utils.tensorboard import SummaryWriter
@@ -56,7 +56,8 @@ def main():
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     if tdist.is_available():
         mdl.to(dvc)
-        if amp is not None:
+        if torch.cuda.is_available():
+            opt = apex_optim.FusedAdam(mdl.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
             mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
         mdl = aDDP(mdl) if torch.cuda.is_available() else tDDP(mdl)
     else:
@@ -84,7 +85,7 @@ def main():
                 n = n.view(-1, n.shape[-1]).to(dvc)
 
                 ls = utils.get_loss(args, p, n, mdl, ls_f, dvc)
-                if amp is not None:
+                if torch.cuda.is_available():
                     with amp.scale_loss(ls, opt) as sc_ls:
                         sc_ls.backward()
                 else:
