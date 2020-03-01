@@ -6,13 +6,12 @@ import torch.distributed as tdist
 import torch.nn as nn
 try:
     from apex import amp
+    from apex.parallel import DistributedDataParallel as aDDP
 except ImportError:
     amp = None
-try:
-    from apex.parallel import DistributedDataParallel as DDP
-except ImportError:
-    from torch.nn.parallel import DistributedDataParallel as DDP
+    aDPP = None
 from torch.backends import cudnn
+from torch.nn.parallel import DistributedDataParallel as tDDP
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -55,7 +54,7 @@ def main():
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln, dvc)
     if tdist.is_available():
         mdl.to(dvc)
-        mdl = DDP(mdl)
+        mdl = aDDP(mdl) if torch.cuda.is_available() else tDDP(mdl)
     else:
         mdl = nn.DataParallel(mdl)
         mdl.to(dvc)
@@ -63,7 +62,7 @@ def main():
     if args.resume != '':
         st_e, bst_ls = utils.resume(args, mdl, opt, amp, dvc)
     else:
-        st_e = 0
+        st_e = 1
     if amp is not None:
         mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
     ls_f = utils.get_loss_f(args).to(dvc)
@@ -72,14 +71,14 @@ def main():
         tb_sw = SummaryWriter()
 
     if not args.test:
-        for e in range(st_e, args.epochs):
-            tr_ls = 0
-            st_tm = time.time()
-            mdl.train()
+        for e in range(st_e, args.epochs + 1):
             if args.local_rank == 0:
-                t = tqdm(total=len(tr), desc=f'Epoch {e + 1}/{args.epochs}')
+                tr_ls = 0
+                st_tm = time.time()
+                t = tqdm(total=len(tr), desc=f'Epoch {e}/{args.epochs}')
+            mdl.train()
             tr.sampler.set_epoch(e)
-            for i, (p, n) in enumerate(tr):
+            for i, (p, n) in enumerate(tr, 1):
                 p = p.view(-1, p.shape[-1]).to(dvc)
                 n = n.view(-1, n.shape[-1]).to(dvc)
 
@@ -90,43 +89,47 @@ def main():
                 else:
                     ls.backward()
                 opt.step()
-                if tdist.is_available():
-                    ls_item = tdist.all_reduce(ls.clone(), op=tdist.reduce_op.SUM) / args.world_size
-                else:
-                    ls_item = ls.item()
-                tr_ls += ls_item
-
                 if args.local_rank == 0:
-                    tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / (i + 1)}, i)
-                    t.set_postfix(loss=f'{tr_ls / (i + 1):.4f}')
+                    if tdist.is_available():
+                        ls = tdist.all_reduce(ls.clone(), op=tdist.reduce_op.SUM) / args.world_size
+                    tr_ls += ls.item()
+
+                    tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
+                    t.set_postfix(loss=f'{tr_ls / i:.4f}')
                     t.update()
             if args.local_rank == 0:
                 t.close()
 
-            el_tm = time.time() - st_tm
-            tr_ls /= len(tr)
             if args.local_rank == 0:
-                l.info(f'Epoch {e_idx_ln + 1}/{args.epochs}: training_loss={tr_ls:.4f}, time={el_tm:.4f}')
+                if dvc.type != 'cpu':
+                    torch.cuda.synchronize()
+                el_tm = time.time() - st_tm
+                tr_ls /= len(tr)
+                l.info(f'Epoch {e}/{args.epochs}: training_loss={tr_ls:.4f}, time={el_tm:.4f}')
                 tb_sw.add_scalar(f'loss/train', tr_ls, e)
 
-            if (e + 1) % args.log_frequency == 0 or e == (args.epochs - 1):
-                vd_ls = 0
-                st_tm = time.time()
-                mdl.eval()
-                for i, (p, n) in enumerate(vd):
-                    p = p.view(-1, p.shape[-1]).to(dvc)
-                    n = n.view(-1, n.shape[-1]).to(dvc)
-
-                    ls = utils.get_loss(args, p, n, mdl, ls_f, dvc)
-                    if tdist.is_available():
-                        vd_ls += tdist.all_reduce(ls.clone(), op=tdist.reduce_op.SUM) / args.world_size
-                    else:
-                        vd_ls += ls.item()
-
-                el_tm = time.time() - st_tm
-                vd_ls /= len(vd)
+            if e % args.log_frequency == 0 or e == (args.epochs - 1):
                 if args.local_rank == 0:
-                    l.info(f'Epoch {e + 1}/{args.epochs}: validation_loss={vd_ls:.4f}, time={el_tm:.4f}')
+                    vd_ls = 0
+                    st_tm = time.time()
+                mdl.eval()
+                with torch.no_grad():
+                    for p, n in vd:
+                        p = p.view(-1, p.shape[-1]).to(dvc)
+                        n = n.view(-1, n.shape[-1]).to(dvc)
+
+                        ls = utils.get_loss(args, p, n, mdl, ls_f, dvc)
+                        if args.local_rank == 0:
+                            if tdist.is_available():
+                                ls = tdist.all_reduce(ls.clone(), op=tdist.reduce_op.SUM) / args.world_size
+                            vd_ls += ls.item()
+
+                if args.local_rank == 0:
+                    if dvc.type != 'cpu':
+                        torch.cuda.synchronize()
+                    el_tm = time.time() - st_tm
+                    vd_ls /= len(vd)
+                    l.info(f'Epoch {e}/{args.epochs}: validation_loss={vd_ls:.4f}, time={el_tm:.4f}')
                     tb_sw.add_scalar(f'loss/validation', vd_ls, e)
 
                 is_bst = bst_ls is None or vd_ls < bst_ls
@@ -134,12 +137,14 @@ def main():
                     bst_ls = vd_ls
                 utils.checkpoint(args, e, mdl, opt, amp, bst_ls, is_bst)
 
-    mtr = utils.Metric()
-    mdl.eval()
-    for b in ts:
-        b = b.view(-1, b.shape[-1]).to(dvc)
-        utils.evaluate(args, b, mdl, mtr, dvc)
     if args.local_rank == 0:
+        mtr = utils.Metric()
+    mdl.eval()
+    with torch.no_grad():
+        for b in ts:
+            b = b.view(-1, b.shape[-1]).to(dvc)
+            utils.evaluate(args, b, mdl, mtr, dvc)
+    if args.local_rank == 0:  # BUG: Only calculates the metrics on the first device!
         l.info(mtr)
         tb_sw.add_hparams(vars(args), dict(mtr))
         tb_sw.close()
