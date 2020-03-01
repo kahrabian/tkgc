@@ -44,6 +44,7 @@ def main():
         tdist.init_process_group(backend='nccl')
 
     if args.local_rank == 0:
+        l.info(f'device: {dvc}')
         l.info('\n'.join(map(lambda x: f'{x[0]}: {x[1]}', sorted(vars(args).items()))) + '\n')
 
     if args.deterministic:
@@ -53,10 +54,10 @@ def main():
 
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln, dvc)
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    if amp is not None:
-        mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
     if tdist.is_available():
         mdl.to(dvc)
+        if amp is not None:
+            mdl, opt = amp.initialize(mdl, opt, opt_level=args.opt_level)
         mdl = aDDP(mdl) if torch.cuda.is_available() else tDDP(mdl)
     else:
         mdl = nn.DataParallel(mdl)
