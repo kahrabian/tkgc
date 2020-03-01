@@ -3,11 +3,9 @@ import numpy as np
 import os
 import torch
 import torch.nn as nn
-from itertools import combinations
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-import src.data as data
 import src.models as models
 from src.data import Dataset
 
@@ -60,13 +58,14 @@ def get_args():
     argparser.add_argument('-es', '--embedding_size', type=int, default=128)
     argparser.add_argument('-mr', '--margin', type=int, default=1)
     argparser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
+    argparser.add_argument('-wd', '--weight_decay', type=float, default=0)
     argparser.add_argument('-e', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch_size', type=int, default=512)
     argparser.add_argument('-ns', '--negative_samples', type=int, default=1)
     argparser.add_argument('-f', '--filter', default=True, action='store_true')
     argparser.add_argument('-t', '--test', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
-    argparser.add_argument('-r', '--resume', default=False, action='store_true')
+    argparser.add_argument('-r', '--resume', type=str, default='')
     argparser.add_argument('-s', '--seed', type=int, default=2020)
     argparser.add_argument('-lf', '--log_frequency', type=int, default=100)
     argparser.add_argument('-w', '--workers', type=int, default=1)
@@ -106,21 +105,15 @@ def get_data(args, gpu):
     return tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln
 
 
-def get_p(args):
-    bpth = 'models/' + args.dataset
-    os.makedirs(bpth, exist_ok=True)
-
-    fn = '-'.join(map(lambda x: f'{x[0]}_{x[1]}', sorted(vars(args).items()))) + '.ckpt'
-    p = os.path.join(bpth, fn)
-    return p
+def resume(args, mdl, opt):
+    if not os.path.exists(args.resume):
+        raise FileNotFoundError('can\'t find the saved model with the given path')
+    ckpt = torch.load(args.resume)
+    mdl.load_state_dict(ckpt['mdl'])
+    opt.load_state_dict(ckpt['opt'])
 
 
 def get_model(args, e_cnt, r_cnt, t_cnt, dvc):
-    p = get_p(args)
-    if args.resume:
-        if not os.path.exists(p):
-            raise FileNotFoundError('can\'t find the saved model with the given params')
-        return nn.DataParallel(torch.load(p))
     return nn.DataParallel(getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt, dvc))
 
 
@@ -183,6 +176,12 @@ def evaluate(args, b, mdl, mtr, dvc):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 
-def save(args, mdl):
-    p = get_p(args)
-    torch.save(mdl, p)
+def checkpoint(args, ckpt):
+    bpth = os.path.join('./models', args.dataset)
+    os.makedirs(bpth, exist_ok=True)
+
+    inc = {'model', 'dropout', 'l1', 'embedding_size',
+           'margin', 'learning_rate', 'weight_decay',
+           'epochs', 'batch_size', 'negative_samples'}
+    fn = '-'.join(map(lambda x: f'{x[0]}_{x[1]}', sorted(filter(lambda x: x[0] in inc, vars(args).items())))) + '.ckpt'
+    torch.save(ckpt, os.path.join(bpth, fn))
