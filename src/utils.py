@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import os
+import shutil
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -63,19 +64,23 @@ def get_args():
     argparser.add_argument('-bs', '--batch_size', type=int, default=512)
     argparser.add_argument('-ns', '--negative_samples', type=int, default=1)
     argparser.add_argument('-f', '--filter', default=True, action='store_true')
+    argparser.add_argument('-r', '--resume', type=str, default='')
+    argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
+    argparser.add_argument('-o', '--opt_level', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'])
     argparser.add_argument('-t', '--test', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
-    argparser.add_argument('-r', '--resume', type=str, default='')
-    argparser.add_argument('-s', '--seed', type=int, default=2020)
     argparser.add_argument('-lf', '--log_frequency', type=int, default=100)
     argparser.add_argument('-w', '--workers', type=int, default=1)
 
+    argparser.add_argument('--local_rank', type=int, default=0)  # NOTE: torch.distributed.launch
+
     args = argparser.parse_args()
+    args.world_size = int(os.getenv('WORLD_SIZE', 1))
 
     return args
 
 
-def get_data(args, gpu):
+def get_data(args):
     bpath = os.path.join('./data', args.dataset)
 
     with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
@@ -94,27 +99,29 @@ def get_data(args, gpu):
     vd_ds.transform(t_idx, ts_bs=tr_ds._ts)
     ts_ds.transform(t_idx, ts=False)
 
-    tr_smp = DistributedSampler(tr_ds, num_replicas=args.workers, rank=gpu)
-    vd_smp = DistributedSampler(vd_ds, num_replicas=args.workers, rank=gpu)
-    ts_smp = DistributedSampler(ts_ds, num_replicas=args.workers, rank=gpu)
+    tr_smp = DistributedSampler(tr_ds, num_replicas=args.world_size, rank=args.local_rank)
+    vd_smp = DistributedSampler(vd_ds, num_replicas=args.world_size, rank=args.local_rank)
+    ts_smp = DistributedSampler(ts_ds, num_replicas=args.world_size, rank=args.local_rank)
 
-    tr = DataLoader(dataset=tr_ds, batch_size=args.batch_size, sampler=tr_smp, pin_memory=True)
-    vd = DataLoader(dataset=vd_ds, batch_size=args.batch_size, sampler=vd_smp, pin_memory=True)
-    ts = DataLoader(dataset=ts_ds, batch_size=args.batch_size, sampler=ts_smp, pin_memory=True)
+    tr = DataLoader(tr_ds, batch_size=args.batch_size, sampler=tr_smp, num_workers=args.workers, pin_memory=True)
+    vd = DataLoader(vd_ds, batch_size=args.batch_size, sampler=vd_smp, num_workers=args.workers, pin_memory=True)
+    ts = DataLoader(ts_ds, batch_size=args.batch_size, sampler=ts_smp, num_workers=args.workers, pin_memory=True)
 
     return tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln
 
 
-def resume(args, mdl, opt):
+def resume(args, mdl, opt, amp, dvc):
     if not os.path.exists(args.resume):
         raise FileNotFoundError('can\'t find the saved model with the given path')
-    ckpt = torch.load(args.resume)
+    ckpt = torch.load(args.resume, map_location=dvc)
     mdl.load_state_dict(ckpt['mdl'])
     opt.load_state_dict(ckpt['opt'])
-
+    if amp is not None:
+        amp.load_state_dict(ckpt['amp'])
+    return ckpt['e'], ckpt['bst_ls']
 
 def get_model(args, e_cnt, r_cnt, t_cnt, dvc):
-    return nn.DataParallel(getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt, dvc))
+    return getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt, dvc)
 
 
 def get_loss_f(args):
@@ -176,12 +183,17 @@ def evaluate(args, b, mdl, mtr, dvc):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 
-def checkpoint(args, ckpt):
+def checkpoint(args, e, mdl, opt, amp, bst_ls, is_bst):
+    ckpt = {'e': e, 'mdl': mdl.state_dict(), 'opt': opt.state_dict(), 'bst_ls': bst_ls}
+    if amp is not None:
+        ckpt['amp'] = amp.state_dict()
+
     bpth = os.path.join('./models', args.dataset)
     os.makedirs(bpth, exist_ok=True)
 
-    inc = {'model', 'dropout', 'l1', 'embedding_size',
-           'margin', 'learning_rate', 'weight_decay',
-           'epochs', 'batch_size', 'negative_samples'}
+    inc = {'model', 'dropout', 'l1', 'embedding_size', 'margin', 'learning_rate', 'weight_decay', 'negative_samples'}
     fn = '-'.join(map(lambda x: f'{x[0]}_{x[1]}', sorted(filter(lambda x: x[0] in inc, vars(args).items())))) + '.ckpt'
-    torch.save(ckpt, os.path.join(bpth, fn))
+    torch.save(ckpt, os.path.join(bpth, f'e_{e}-' + fn))
+
+    if is_bst:
+        shutil.copyfile(os.path.join(bpth, f'e_{e}-' + fn), os.path.join(bpth, f'bst-' + fn))

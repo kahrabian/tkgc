@@ -2,7 +2,7 @@
 #SBATCH --account=def-jinguo
 #SBATCH --job-name=gg-tkgc
 #SBATCH --gres=gpu:v100:2
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=93G
 #SBATCH --time=3-0
 #SBATCH --output=./logs/%x-%j.out
@@ -12,17 +12,18 @@
 
 source activate gg
 
-python -BW ignore -m torch.utils.bottleneck main.py \
+export OMP_NUM_THREADS=10
+python -BW ignore -m torch.distributed.launch --nproc_per_node=2 --master_addr='127.0.0.1' --master_port=2020 main.py \
        -ds GitGraph \
        -m TADistMult \
-       -d 0.5 \
-       -es 512 \
-       -mr 6 \
-       -lr 1e-5 \
-       -e 1000 \
-       -bs 16384 \
-       -ns 2 \
+       -d 0.2 \
+       -es 256 \
+       -lr 0.001 \
+       -e 100 \
+       -bs 4096 \
+       -ns 64 \
        -f \
+       -o O2 \
        -md head \
-       -s 2020 \
-       -lf 100
+       -lf 10 \
+       -w 5
