@@ -15,10 +15,10 @@ def _logger():
     return logging.getLogger()
 
 
-def main():
+def main(gpu):
     logger = _logger()
 
-    dvc = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    dvc = torch.device(f'cuda:{gpu}' if torch.cuda.is_available() else 'cpu')
     logger.info(f'device: {dvc}\n')
 
     args = utils.get_args()
@@ -26,7 +26,7 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args)
+    tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.get_data(args, gpu)
 
     mdl = utils.get_model(args, e_idx_ln, r_idx_ln, t_idx_ln, dvc).to(dvc)
     loss_f = utils.get_loss_f(args).to(dvc)
@@ -35,17 +35,16 @@ def main():
     tb_sw = SummaryWriter()
 
     if not args.test:
-        tr_bs = data.split(tr, args.batch_size)
-        vd_bs = data.split(vd, args.batch_size)
         for epoch in range(args.epochs):
-            np.random.shuffle(tr_bs)
-
             tr_loss = 0
             st_tm = time.time()
             mdl.train()
-            with tqdm(total=len(tr_bs), desc=f'Epoch {epoch + 1}/{args.epochs}') as t:
-                for i, b in enumerate(tr_bs):
-                    loss = utils.get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc)
+            with tqdm(total=len(tr), desc=f'Epoch {epoch + 1}/{args.epochs}') as t:
+                for i, (p, n) in enumerate(tr):
+                    p = p.view(-1, p.shape[-1]).to(dvc)
+                    n = n.view(-1, n.shape[-1]).to(dvc)
+
+                    loss = utils.get_loss(args, p, n, mdl, loss_f, dvc)
                     loss.backward()
                     optim.step()
                     tr_loss += loss.item()
@@ -56,7 +55,7 @@ def main():
                     t.update()
 
             el_tm = time.time() - st_tm
-            tr_loss /= len(tr_bs)
+            tr_loss /= len(tr)
             logger.info(f'Epoch {epoch + 1}/{args.epochs}: training_loss={tr_loss:.4f}, time={el_tm:.4f}')
 
             tb_sw.add_scalar(f'loss/train', tr_loss, epoch)
@@ -65,12 +64,15 @@ def main():
                 vd_loss = 0
                 st_tm = time.time()
                 mdl.eval()
-                for b in vd_bs:
-                    loss = utils.get_loss(args, b, np.concatenate([tr, vd]), {**tr_ts, **vd_ts}, mdl, loss_f, dvc)
+                for i, (p, n) in enumerate(vd):
+                    p = p.view(-1, p.shape[-1]).to(dvc)
+                    n = n.view(-1, n.shape[-1]).to(dvc)
+
+                    loss = utils.get_loss(args, p, n, mdl, loss_f, dvc)
                     vd_loss += loss.item()
 
                 el_tm = time.time() - st_tm
-                vd_loss /= len(vd_bs)
+                vd_loss /= len(vd)
                 logger.info(f'Epoch {epoch + 1}/{args.epochs}: validation_loss={vd_loss:.4f}, time={el_tm:.4f}')
 
                 tb_sw.add_scalar(f'loss/validation', vd_loss, epoch)
@@ -79,8 +81,8 @@ def main():
 
     mtr = utils.Metric()
     mdl.eval()
-    ts_bs = data.split(ts if args.test else vd, args.batch_size)
-    for b in ts_bs:
+    for b in ts:
+        b = b.view(-1, b.shape[-1]).to(dvc)
         utils.evaluate(args, b, mdl, mtr, dvc)
     logger.info(mtr)
 
@@ -90,4 +92,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(0)

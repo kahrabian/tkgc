@@ -1,13 +1,15 @@
 import argparse
 import numpy as np
 import os
-import re
 import torch
 import torch.nn as nn
 from itertools import combinations
+from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 import src.data as data
 import src.models as models
+from src.data import Dataset
 
 
 class Metric(object):
@@ -28,9 +30,9 @@ class Metric(object):
 
     def __iter__(self):
         h_1, h_3, h_10, mr, mrr = self._normalize()
-        yield 'metric/H@1', h_1
-        yield 'metric/H@3', h_3
-        yield 'metric/H@10', h_10
+        yield 'metric/H1', h_1
+        yield 'metric/H3', h_3
+        yield 'metric/H10', h_10
         yield 'metric/MR', mr
         yield 'metric/MRR', mrr
 
@@ -67,47 +69,41 @@ def get_args():
     argparser.add_argument('-r', '--resume', default=False, action='store_true')
     argparser.add_argument('-s', '--seed', type=int, default=2020)
     argparser.add_argument('-lf', '--log_frequency', type=int, default=100)
+    argparser.add_argument('-w', '--workers', type=int, default=1)
 
     args = argparser.parse_args()
 
     return args
 
 
-def _load(pth, fn):
-    with open(os.path.join(pth, fn), 'r') as f:
-        qs = list(map(lambda x: x.split()[:4], f.read().split('\n')[:-1]))
-    return np.array(qs)
+def get_data(args, gpu):
+    bpath = os.path.join('./data', args.dataset)
 
+    with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
+        e_idx_ln = int(f.readline().strip())
+    with open(os.path.join(bpath, 'relation2id.txt'), 'r') as f:
+        r_idx_ln = int(f.readline().strip())
 
-def get_data(args):
-    bpath = 'data/' + args.dataset
-    tr = _load(bpath, 'train.txt')
-    vd = _load(bpath, 'valid.txt')
-    ts = _load(bpath, 'test.txt')
+    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_idx_ln)
+    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_idx_ln)
+    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, ns=False)
 
-    qf = [None, None, None, lambda x: data.format_time(args, x, re.compile(r'[-T:Z]'))]
-    tr = data.format(tr, qf)
-    vd = data.format(vd, qf)
-    ts = data.format(ts, qf)
-
-    al = np.concatenate([tr, vd, ts])
-    e_idx = data.index(al[:, [0, 2]])
-    r_idx = data.index(al[:, 1])
-    t_idx = data.index(al[:, 3:])
-
-    e_idx_ln = len(e_idx)
-    r_idx_ln = len(r_idx)
+    t_idx = {e: i for i, e in enumerate(np.unique(np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()))}
     t_idx_ln = len(t_idx)
 
-    qt = [e_idx, r_idx, e_idx] + [t_idx, ] * (1 if args.model == 'TTransE' else 5)
-    tr = data.transform(tr, qt)
-    vd = data.transform(vd, qt)
-    ts = data.transform(ts, qt)
+    tr_ds.transform(t_idx, ts_bs={})
+    vd_ds.transform(t_idx, ts_bs=tr_ds._ts)
+    ts_ds.transform(t_idx, ts=False)
 
-    tr_ts = {tuple(x): True for x in tr[:, :3]}
-    vd_ts = {tuple(x): True for x in vd[:, :3]}
+    tr_smp = DistributedSampler(tr_ds, num_replicas=args.workers, rank=gpu)
+    vd_smp = DistributedSampler(vd_ds, num_replicas=args.workers, rank=gpu)
+    ts_smp = DistributedSampler(ts_ds, num_replicas=args.workers, rank=gpu)
 
-    return tr, vd, ts, tr_ts, vd_ts, e_idx_ln, r_idx_ln, t_idx_ln
+    tr = DataLoader(dataset=tr_ds, batch_size=args.batch_size, sampler=tr_smp, pin_memory=True)
+    vd = DataLoader(dataset=vd_ds, batch_size=args.batch_size, sampler=vd_smp, pin_memory=True)
+    ts = DataLoader(dataset=ts_ds, batch_size=args.batch_size, sampler=ts_smp, pin_memory=True)
+
+    return tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln
 
 
 def get_p(args):
@@ -134,28 +130,20 @@ def get_loss_f(args):
     return nn.MarginRankingLoss(args.margin)
 
 
-def get_loss(args, b, tr, tr_ts, mdl, loss_f, dvc):
-    pos_smp, neg_smp = data.prepare(args, b, tr, tr_ts)
-
-    pos_s = torch.tensor(pos_smp[:, 0]).long().to(dvc)
-    pos_r = torch.tensor(pos_smp[:, 1]).long().to(dvc)
-    pos_o = torch.tensor(pos_smp[:, 2]).long().to(dvc)
-    pos_t = torch.tensor(pos_smp[:, 3:]).long().squeeze().to(dvc)
-    neg_s = torch.tensor(neg_smp[:, 0]).long().to(dvc)
-    neg_r = torch.tensor(neg_smp[:, 1]).long().to(dvc)
-    neg_o = torch.tensor(neg_smp[:, 2]).long().to(dvc)
-    neg_t = torch.tensor(neg_smp[:, 3:]).long().squeeze().to(dvc)
+def get_loss(args, p, n, mdl, loss_f, dvc):
+    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2], p[:, 3:].squeeze()
+    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2], n[:, 3:].squeeze()
 
     if mdl.training:
         mdl.zero_grad()
-    pos, neg = mdl(pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t)
+    s_p, s_n = mdl(p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t)
 
     if args.model == 'TADistMult':
-        x = torch.cat([pos, neg])
-        y = torch.cat([torch.ones(pos.shape), torch.zeros(neg.shape)]).to(dvc)
+        x = torch.cat([s_p, s_n])
+        y = torch.cat([torch.ones(s_p.shape), torch.zeros(s_n.shape)]).to(dvc)
         loss = loss_f(x, y)
     else:
-        loss = loss_f(pos, neg, (-1) * torch.ones(pos.shape + neg.shape).to(dvc))
+        loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape + s_n.shape).to(dvc))
 
     return loss
 
@@ -165,17 +153,14 @@ def _p(args):
 
 
 def evaluate(args, b, mdl, mtr, dvc):
-    ts_r = torch.tensor(b[:, 1]).long().to(dvc)
-    ts_t = torch.tensor(b[:, 3:]).long().squeeze().to(dvc)
-
+    ts_r, ts_t = b[:, 2], b[:, 3:].squeeze()
     if args.model == 'TTransE':
         rt_embed = mdl.module.r_embed(ts_r) + mdl.module.t_embed(ts_t)
     else:
         rt_embed = mdl.module.rt_embed(ts_r, ts_t)
 
     if args.mode != 'tail':
-        ts_o = torch.tensor(b[:, 2]).long().to(dvc)
-        o_embed = mdl.module.e_embed(ts_o)
+        o_embed = mdl.module.e_embed(b[:, 1])
         if args.model == 'TADistMult':
             ort = rt_embed * o_embed
             s_r = torch.matmul(ort, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
@@ -183,19 +168,18 @@ def evaluate(args, b, mdl, mtr, dvc):
             ort = o_embed - rt_embed
             s_r = torch.cdist(
                 mdl.module.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
-        for i, s in enumerate(b[:, 0]):
+        for i, s in enumerate(b[:, 0].cpu().numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
-        ts_s = torch.tensor(b[:, 0]).long().to(dvc)
-        s_embed = mdl.module.e_embed(ts_s)
+        s_embed = mdl.module.e_embed(b[:, 0])
         if args.model == 'TADistMult':
             srt = s_embed * rt_embed
             o_r = torch.matmul(srt, mdl.module.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
             srt = s_embed + rt_embed
             o_r = torch.cdist(srt, mdl.module.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
-        for i, o in enumerate(b[:, 2]):
+        for i, o in enumerate(b[:, 1].cpu().numpy()):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 

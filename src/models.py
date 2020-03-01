@@ -8,7 +8,7 @@ class TTransE(nn.Module):
         return torch.norm(s + r + t - o, p=1 if self.l1 else 2, dim=1)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super(TTransE, self).__init__()
+        super().__init__()
         self.l1 = args.l1
 
         self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(dvc)
@@ -18,19 +18,19 @@ class TTransE(nn.Module):
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
 
-    def forward(self, pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t):
-        pos_s_e = self.e_embed(pos_s)
-        pos_o_e = self.e_embed(pos_o)
-        pos_r_e = self.r_embed(pos_r)
-        pos_t_e = self.t_embed(pos_t)
+    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
+        p_s_e = self.e_embed(p_s)
+        p_o_e = self.e_embed(p_o)
+        p_r_e = self.r_embed(p_r)
+        p_t_e = self.t_embed(p_t)
 
-        neg_s_e = self.e_embed(neg_s)
-        neg_o_e = self.e_embed(neg_o)
-        neg_r_e = self.r_embed(neg_r)
-        neg_t_e = self.t_embed(pos_t)
+        n_s_e = self.e_embed(n_s)
+        n_o_e = self.e_embed(n_o)
+        n_r_e = self.r_embed(n_r)
+        n_t_e = self.t_embed(p_t)
 
-        pos = self._score(pos_s_e, pos_o_e, pos_r_e, pos_t_e)
-        neg = self._score(neg_s_e, neg_o_e, neg_r_e, neg_t_e)
+        pos = self._score(p_s_e, p_o_e, p_r_e, p_t_e)
+        neg = self._score(n_s_e, n_o_e, n_r_e, n_t_e)
 
         return pos, neg
 
@@ -40,7 +40,7 @@ class TAX(nn.Module):
         raise NotImplementedError(f'this method should be implemented in {self.__class__}')
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super(TAX, self).__init__()
+        super().__init__()
         self.dropout = args.dropout
 
         self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(dvc)
@@ -71,24 +71,17 @@ class TAX(nn.Module):
 
         return h.squeeze()
 
-    def forward(self, pos_s, pos_r, pos_o, pos_t, neg_s, neg_r, neg_o, neg_t):
-        pos_s_e = self.e_embed(pos_s)
-        pos_o_e = self.e_embed(pos_o)
-        pos_rt_e = self.rt_embed(pos_r, pos_t)
+    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
+        p_s_e = F.dropout(self.e_embed(p_s), p=self.dropout, training=self.training)
+        p_o_e = F.dropout(self.e_embed(p_o), p=self.dropout, training=self.training)
+        p_rt_e = F.dropout(self.rt_embed(p_r, p_t), p=self.dropout, training=self.training)
 
-        neg_s_e = self.e_embed(neg_s)
-        neg_o_e = self.e_embed(neg_o)
-        neg_rt_e = self.rt_embed(neg_r, neg_t)
+        n_s_e = F.dropout(self.e_embed(n_s), p=self.dropout, training=self.training)
+        n_o_e = F.dropout(self.e_embed(n_o), p=self.dropout, training=self.training)
+        n_rt_e = F.dropout(self.rt_embed(n_r, n_t), p=self.dropout, training=self.training)
 
-        pos_s_e = F.dropout(pos_s_e, p=self.dropout, training=self.training)
-        pos_o_e = F.dropout(pos_o_e, p=self.dropout, training=self.training)
-        pos_rt_e = F.dropout(pos_rt_e, p=self.dropout, training=self.training)
-        neg_s_e = F.dropout(neg_s_e, p=self.dropout, training=self.training)
-        neg_o_e = F.dropout(neg_o_e, p=self.dropout, training=self.training)
-        neg_rt_e = F.dropout(neg_rt_e, p=self.dropout, training=self.training)
-
-        pos = self._score(pos_s_e, pos_o_e, pos_rt_e)
-        neg = self._score(neg_s_e, neg_o_e, neg_rt_e)
+        pos = self._score(p_s_e, p_o_e, p_rt_e)
+        neg = self._score(n_s_e, n_o_e, n_rt_e)
 
         return pos, neg
 
@@ -98,7 +91,7 @@ class TADistMult(TAX):
         return torch.sum(s * o * rt, dim=1)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super(TADistMult, self).__init__(args, e_cnt, r_cnt, t_cnt, dvc)
+        super().__init__(args, e_cnt, r_cnt, t_cnt, dvc)
 
 
 class TATransE(TAX):
@@ -106,4 +99,4 @@ class TATransE(TAX):
         return torch.norm(s + rt - o, p=2, dim=1)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super(TATransE, self).__init__(args, e_cnt, r_cnt, t_cnt, dvc)
+        super().__init__(args, e_cnt, r_cnt, t_cnt, dvc)

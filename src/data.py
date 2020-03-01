@@ -1,58 +1,67 @@
 import math
 import numpy as np
-import re
-from itertools import chain
+import os
+import torch
+from datetime import datetime
+from torch.utils.data import Dataset as tDataset
 
 
-def split(d, sz):
-    num_batches = math.ceil(len(d) / sz)
-    return np.array_split(d, num_batches)
+class Dataset(tDataset):
+    def _load(self, fn):
+        with open(fn, 'r') as f:
+            self._d = np.array(list(map(lambda x: x.split()[:4], f.read().split('\n')[1:-1])), ndmin=3)
 
+    def _format(self):
+        self._d = np.apply_along_axis(lambda x: x[:3].tolist() + self._format_time(x[3]), 2, self._d)
 
-def format(d, fs):
-    fd = [list(chain.from_iterable([[x[j], ] if f is None else f(x[j]) for j, f in enumerate(fs)])) for x in d]
-    return np.array(fd)
+    def _format_time(self, t):
+        t = datetime.fromtimestamp(int(t))
+        m, d, h = t.month, t.day, t.hour  # NOTE: Could use other parts too!
+        if self._args.model == 'TTransE':
+            ft = [f'{m}{d}{h}', ]
+        else:
+            ft = [f'{m}m', ] + [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
+        return ft
 
+    def transform(self, idx, ts=True, ts_bs=None):
+        self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [idx[y] for y in x[3:]], 2, self._d)
+        self._ts = {**ts_bs, **{tuple(x): True for x in self._d[0, :, :3]}} if ts else {}
 
-def format_time(args, t, t_regx):
-    _, m, d, h, _, _ = re.split(t_regx, t)[:-1]  # NOTE: Could use other parts too!
-    ft = [f'{m}{d}{h}', ] if args.model == 'TTransE' else [f'{m}m', ] + [f'{x}d' for x in d] + [f'{x}h' for x in h]
-    return ft
+    def __array__(self):
+        return self._d
 
+    def __init__(self, args, fn, e_idx_ln, ns=True):
+        super().__init__()
 
-def index(d):
-    return {ent: idx for idx, ent in enumerate(np.unique(d.flatten()))}
+        self._args = args
+        self._e_idx_ln = e_idx_ln
+        self._ns = ns
 
+        self._load(fn)
+        self._format()
 
-def transform(d, idxs):
-    td = np.zeros_like(d, dtype=np.int_)
-    for i, x in enumerate(d):
-        for j, idx in enumerate(idxs):
-            if idx is None:
-                continue
-            td[i][j] = idx[x[j]]
-    return td
+    def __len__(self):
+        return self._d.shape[1]
 
+    def _check(self, x, th, s):
+        x = x.copy()
+        x[th] = s
+        return self._ts.get(tuple(x), False)
 
-def _check(x, idx, s, tr_ts):
-    x = x.copy()
-    x[idx] = s
-    return tr_ts.get(tuple(x), False)
+    def _corrupt(self, p):
+        n = p.copy()
+        for i, x in enumerate(n):
+            ht = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
+            s = np.random.randint(0, self._e_idx_ln)
+            while s == x[ht] or (self._args.filter and self._check(x, ht, s)):
+                s = np.random.randint(0, self._e_idx_ln)
+            n[i][ht] = s
+        return n
 
+    def _prepare(self, x):
+        p = np.repeat(x, self._args.negative_samples if self._args.model != 'TDistMult' else 1, axis=0)
+        n = self._corrupt(p)
+        return p, n
 
-def _corrupt(args, pos, tr, tr_ts):
-    neg = pos.copy()
-    for i, x in enumerate(neg):
-        idx = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
-        ss = tr[:, idx]  # NOTE: Only choose from existing head/tail space
-        s = np.random.choice(ss, 1)[0]  # NOTE: Use while/random instead of for for speed-up
-        while s == x[idx] or (args.filter and _check(x, idx, s, tr_ts)):
-            s = np.random.choice(ss, 1)[0]
-        neg[i][idx] = s
-    return neg
-
-
-def prepare(args, b, tr, tr_ts):
-    pos = np.repeat(b, args.negative_samples, axis=0) if args.model != 'TDistMult' else b.copy()
-    neg = _corrupt(args, pos, tr, tr_ts)
-    return pos, neg
+    def __getitem__(self, i):
+        return self._prepare(self._d[:, i]) if self._ns else self._d[:, i]
