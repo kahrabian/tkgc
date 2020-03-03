@@ -133,9 +133,9 @@ def data(args):
     with open(os.path.join(bpath, 'relation2id.txt'), 'r') as f:
         r_idx_ln = int(f.readline().strip())
 
-    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_idx_ln)
-    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_idx_ln)
-    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, ns=False)
+    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_idx_ln, 1)
+    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_idx_ln, 2)
+    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, 3)
 
     t_idx = {e: i for i, e in enumerate(np.unique(np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()))}
     t_idx_ln = len(t_idx)
@@ -231,14 +231,14 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
 
         if hvd.rank() == 0:
             tr_ls += ls.item()
-            tb_sw.add_scalars(f'epoch/{hvd.rank()}/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
+            tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
             t.set_postfix(loss=f'{tr_ls / i:.4f}')
             t.update()
 
     if hvd.rank() == 0:
         t.close()
         tr_ls /= len(tr)
-        tb_sw.add_scalar(f'loss/{hvd.rank()}/train', tr_ls, e)
+        tb_sw.add_scalar(f'loss/train', tr_ls, e)
 
 
 def evaluate(args, b, mdl, mtr):
@@ -287,11 +287,13 @@ def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
 
 def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
     vd_ls = 0
+    mtr = Metric()
     mdl.eval()
     with torch.no_grad():
-        for p, n in vd:
+        for p, n, b in vd:
             p = p.view(-1, p.shape[-1]).to(args.dvc)
             n = n.view(-1, n.shape[-1]).to(args.dvc)
+            b = b.view(-1, b.shape[-1]).to(args.dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
             vd_ls += ls.item()
@@ -299,10 +301,13 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
             evaluate(args, b, mdl, mtr)
     vd_ls /= len(vd)
     vd_ls_avg = _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average)
+    mtr.allreduce()
 
     if hvd.rank() == 0:
         print(f'Epoch {e}/{args.epochs} validation loss: {vd_ls_avg}')
-        tb_sw.add_scalar(f'loss/{hvd.rank()}/validation', vd_ls_avg, e)
+        print(mtr)
+        tb_sw.add_scalar(f'loss/validation', vd_ls_avg, e)
+        tb_sw.add_scalars('validation', dict(mtr))
 
         is_bst, bst_ls = ls_mtr.update(vd_ls_avg)
         _checkpoint(args, e, mdl, opt, bst_ls, is_bst)
@@ -320,7 +325,6 @@ def test(args, mdl, ts, tb_sw):
     if hvd.rank() == 0:
         print(mtr)
         tb_sw.add_hparams(vars(args), dict(mtr))
-        tb_sw.close()
 
 
 def _p(args):

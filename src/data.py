@@ -27,12 +27,12 @@ class Dataset(tDataset):
     def __array__(self):
         return self._d
 
-    def __init__(self, args, fn, e_idx_ln, ns=True):
+    def __init__(self, args, fn, e_idx_ln, md):
         super().__init__()
 
         self._args = args
         self._e_idx_ln = e_idx_ln
-        self._ns = ns
+        self._md = md
 
         self._load(fn)
         self._format()
@@ -61,4 +61,9 @@ class Dataset(tDataset):
         return p, n
 
     def __getitem__(self, i):
-        return self._prepare(self._d[:, i]) if self._ns else self._d[:, i]
+        if self._md == 1:
+            return self._prepare(self._d[:, i])
+        if self._md == 2:
+            return self._prepare(self._d[:, i]) + (self._d[:, i],)
+        if self._md == 3:
+            return self._d[:, i]

@@ -17,6 +17,8 @@ def main():
                 utils.validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw)
     else:
         utils.test(args, mdl, ts, tb_sw)
+    if hvd.rank() == 0:
+        tb_sw.close()
 
 
 if __name__ == '__main__':
