@@ -18,13 +18,15 @@ horovodrun -np 2 -H localhost:2020 main.py \
        -ds GitGraph \
        -m TADistMult \
        -d 0.2 \
+       -l1 \
        -es 256 \
        -lr 0.001 \
        -e 100 \
        -bs 4096 \
        -ns 64 \
        -f \
-       -o O2 \
+       -fp \
+       -as \
        -md head \
        -lf 10 \
-       -w 5
+       -w 10
