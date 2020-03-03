@@ -12,8 +12,7 @@
 
 source activate gg
 
-export OMP_NUM_THREADS=10
-python -BW ignore -m torch.distributed.launch --nproc_per_node=2 --master_addr='127.0.0.1' --master_port=2020 main.py \
+horovodrun -np 2 -H localhost:2020 main.py \
        -ds GitGraph \
        -m TADistMult \
        -d 0.2 \
