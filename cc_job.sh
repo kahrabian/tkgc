@@ -10,7 +10,9 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=kian.ahrabian@mail.mcgill.ca
 
-source activate gg
+module load python/3.7.4 gcc/7.3.0 cuda/10.0.130 cudnn/7.6 openmpi/3.1.2 nccl/2.3.5
+
+source $VENVDIR/gg/bin/activate
 
 horovodrun -np 2 -H localhost:2020 main.py \
        -ds GitGraph \
