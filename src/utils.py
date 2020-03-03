@@ -197,8 +197,8 @@ def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
 
 
 def _loss(args, p, n, mdl, loss_f):
-    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2], p[:, 3:].squeeze()
-    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2], n[:, 3:].squeeze()
+    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].squeeze().to(args.dvc)
+    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].squeeze().to(args.dvc)
 
     if mdl.training:
         mdl.zero_grad()
@@ -222,8 +222,8 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
     mdl.train()
     tr.sampler.set_epoch(e)
     for i, (p, n) in enumerate(tr, 1):
-        p = p.view(-1, p.shape[-1]).to(args.dvc)
-        n = n.view(-1, n.shape[-1]).to(args.dvc)
+        p = p.view(-1, p.shape[-1])
+        n = n.view(-1, n.shape[-1])
 
         ls = _loss(args, p, n, mdl, ls_f)
         ls.backward()
@@ -242,7 +242,7 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
 
 
 def evaluate(args, b, mdl, mtr):
-    ts_r, ts_t = b[:, 2], b[:, 3:].squeeze()
+    ts_r, ts_t = b[:, 2].to(args.dvc), b[:, 3:].squeeze().to(args.dvc)
     if args.model == 'TTransE':
         rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
     else:
@@ -256,7 +256,7 @@ def evaluate(args, b, mdl, mtr):
         else:
             ort = o_embed - rt_embed
             s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
-        for i, s in enumerate(b[:, 0].cpu().numpy()):
+        for i, s in enumerate(b[:, 0].numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
@@ -267,7 +267,7 @@ def evaluate(args, b, mdl, mtr):
         else:
             srt = s_embed + rt_embed
             o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
-        for i, o in enumerate(b[:, 1].cpu().numpy()):
+        for i, o in enumerate(b[:, 1].numpy()):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 
@@ -291,9 +291,9 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
     mdl.eval()
     with torch.no_grad():
         for p, n, b in vd:
-            p = p.view(-1, p.shape[-1]).to(args.dvc)
-            n = n.view(-1, n.shape[-1]).to(args.dvc)
-            b = b.view(-1, b.shape[-1]).to(args.dvc)
+            p = p.view(-1, p.shape[-1])
+            n = n.view(-1, n.shape[-1])
+            b = b.view(-1, b.shape[-1])
 
             ls = _loss(args, p, n, mdl, ls_f)
             vd_ls += ls.item()
