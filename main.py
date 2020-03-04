@@ -13,7 +13,7 @@ def main():
         ls_mtr = utils.BestMetric() if hvd.rank() == 0 else None
         for e in range(st_e, args.epochs + 1):
             utils.train(args, e, mdl, opt, ls_f, tr, tb_sw)
-            if e % args.log_frequency == 0 or e == (args.epochs - 1):
+            if e % args.log_frequency == 0 or e == args.epochs:
                 utils.validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw)
     else:
         utils.test(args, mdl, ts, tb_sw)

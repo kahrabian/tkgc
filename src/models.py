@@ -20,21 +20,12 @@ class TTransE(nn.Module):
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
 
-    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
-        p_s_e = self.e_embed(p_s).to(self.dvc)
-        p_o_e = self.e_embed(p_o).to(self.dvc)
-        p_r_e = self.r_embed(p_r)
-        p_t_e = self.t_embed(p_t)
-
-        n_s_e = self.e_embed(n_s).to(self.dvc)
-        n_o_e = self.e_embed(n_o).to(self.dvc)
-        n_r_e = self.r_embed(n_r)
-        n_t_e = self.t_embed(p_t)
-
-        pos = self._score(p_s_e, p_o_e, p_r_e, p_t_e)
-        neg = self._score(n_s_e, n_o_e, n_r_e, n_t_e)
-
-        return pos, neg
+    def forward(self, s, o, r, t):
+        s_e = self.e_embed(s).to(self.dvc)
+        o_e = self.e_embed(o).to(self.dvc)
+        r_e = self.r_embed(r)
+        t_e = self.t_embed(t)
+        return self._score(s_e, o_e, r_e, t_e)
 
 
 class TAX(nn.Module):
@@ -75,19 +66,11 @@ class TAX(nn.Module):
 
         return h.squeeze()
 
-    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
-        p_s_e = F.dropout(self.e_embed(p_s).to(self.dvc), p=self.dropout, training=self.training)
-        p_o_e = F.dropout(self.e_embed(p_o).to(self.dvc), p=self.dropout, training=self.training)
-        p_rt_e = F.dropout(self.rt_embed(p_r, p_t), p=self.dropout, training=self.training)
-
-        n_s_e = F.dropout(self.e_embed(n_s).to(self.dvc), p=self.dropout, training=self.training)
-        n_o_e = F.dropout(self.e_embed(n_o).to(self.dvc), p=self.dropout, training=self.training)
-        n_rt_e = F.dropout(self.rt_embed(n_r, n_t), p=self.dropout, training=self.training)
-
-        pos = self._score(p_s_e, p_o_e, p_rt_e)
-        neg = self._score(n_s_e, n_o_e, n_rt_e)
-
-        return pos, neg
+    def forward(self, s, o, r, t):
+        s_e = F.dropout(self.e_embed(s).to(self.dvc), p=self.dropout, training=self.training)
+        o_e = F.dropout(self.e_embed(o).to(self.dvc), p=self.dropout, training=self.training)
+        rt_e = F.dropout(self.rt_embed(r, t), p=self.dropout, training=self.training)
+        return self._score(s_e, o_e, rt_e)
 
 
 class TADistMult(TAX):

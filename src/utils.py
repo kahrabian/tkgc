@@ -40,7 +40,7 @@ class Metric(object):
 
     def __str__(self):
         h_1, h_3, h_10, mr, mrr = self._normalize()
-        return f'\nH@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}'
+        return f'H@1: {h_1}\nH@3: {h_3}\nH@10: {h_10}\nMR: {mr}\nMRR: {mrr}'
 
     def __iter__(self):
         h_1, h_3, h_10, mr, mrr = self._normalize()
@@ -204,7 +204,8 @@ def _loss(args, p, n, mdl, loss_f):
 
     if mdl.training:
         mdl.zero_grad()
-    s_p, s_n = mdl(p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t)
+    s_p = mdl(p_s, p_o, p_r, p_t)
+    s_n = mdl(n_s, n_o, n_r, n_t)
 
     if args.model == 'TADistMult':
         x = torch.cat([s_p, s_n])

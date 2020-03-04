@@ -14,7 +14,7 @@ module load python/3.7.4 gcc/7.3.0 cuda/10.0.130 cudnn/7.6 openmpi/3.1.2 nccl/2.
 
 source ${VENVDIR}/gg/bin/activate
 
-export LD_LIBRARY_PATH=/home/kahrab/venvs/gg/lib/python3.7/site-packages/torch/lib:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=${VENVDIR}/gg/lib/python3.7/site-packages/torch/lib:${LD_LIBRARY_PATH}
 horovodrun -np 2 -hostfile hostfile --mpi-args="--oversubscribe" --timeline-filename ./logs/timeline-${SLURM_JOB_ID}.json --timeline-mark-cycles python main.py \
            -ds GitGraph \
            -m TATransE \
