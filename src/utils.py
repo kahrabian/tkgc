@@ -97,6 +97,7 @@ def _args():
     argparser.add_argument('-t', '--test', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
+    argparser.add_argument('-th', '--threads', type=int, default=1)
     argparser.add_argument('-w', '--workers', type=int, default=1)
 
     args = argparser.parse_args()
@@ -112,7 +113,7 @@ def initialize():
     if args.deterministic:
         torch.manual_seed(hvd.rank())  # NOTE: Reproducability
 
-    torch.set_num_threads(args.workers)
+    torch.set_num_threads(args.threads)
 
     args.dvc = f'cuda:{hvd.local_rank()}' if torch.cuda.is_available() else 'cpu'
     if args.dvc != 'cpu':
@@ -251,22 +252,22 @@ def evaluate(args, b, mdl, mtr):
     if args.mode != 'tail':
         o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
         if args.model == 'TADistMult':
-            ort = rt_embed * o_embed
-            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
+            ort = (rt_embed * o_embed).cpu()
+            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
-            ort = o_embed - rt_embed
-            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
+            ort = (o_embed - rt_embed).cpu()
+            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).numpy()
         for i, s in enumerate(b[:, 0].numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
         s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
         if args.model == 'TADistMult':
-            srt = s_embed * rt_embed
-            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
+            srt = (s_embed * rt_embed).cpu()
+            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
         else:
-            srt = s_embed + rt_embed
-            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
+            srt = (s_embed + rt_embed).cpu()
+            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).numpy()
         for i, o in enumerate(b[:, 1].numpy()):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
