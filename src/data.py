@@ -13,11 +13,11 @@ class Dataset(tDataset):
 
     def _format_time(self, t):
         t = datetime.fromtimestamp(int(t))
-        m, d, h = t.month, t.day, t.hour  # NOTE: Could use other parts too!
+        d, h = t.day, t.hour  # NOTE: Could use other parts too!
         if self._args.model == 'TTransE':
-            ft = [f'{m}{d}{h}', ]
+            ft = [f'{d}{h}', ]
         else:
-            ft = [f'{m}m', ] + [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
+            ft = [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
         return ft
 
     def transform(self, idx, ts=True, ts_bs=None):

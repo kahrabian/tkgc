@@ -208,8 +208,8 @@ def _loss(args, p, n, mdl, loss_f):
     s_n = mdl(n_s, n_o, n_r, n_t)
 
     if args.model == 'TADistMult':
-        x = torch.cat([s_p, s_n])
-        y = torch.cat([torch.ones(s_p.shape), torch.zeros(s_n.shape)]).to(args.dvc)
+        x = torch.cat((s_p, s_n))
+        y = torch.cat((torch.ones(s_p.shape), torch.zeros(s_n.shape))).to(args.dvc)
         loss = loss_f(x, y)
     else:
         loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape + s_n.shape).to(args.dvc))
