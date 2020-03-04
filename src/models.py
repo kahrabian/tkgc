@@ -63,36 +63,36 @@ class AbstractDE(torch.nn.Module):
     def _score(self, st, ot, r):
         raise NotImplementedError(f'this method should be implemented in {self.__class__}')
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+    def __init__(self, args, e_cnt, r_cnt):
         super().__init__()
 
         self.dvc = args.dvc
         self.dropout = args.dropout
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size * 2).cuda()
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size * 2).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
 
-        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
-        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
+        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
         nn.init.xavier_uniform_(self.d_frq_embed.weight)
         nn.init.xavier_uniform_(self.h_frq_embed.weight)
 
-        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
-        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
+        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
         nn.init.xavier_uniform_(self.d_phi_embed.weight)
         nn.init.xavier_uniform_(self.h_phi_embed.weight)
 
-        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
-        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).cuda()
+        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
         nn.init.xavier_uniform_(self.d_amp_embed.weight)
         nn.init.xavier_uniform_(self.h_amp_embed.weight)
 
     def _t_embed(self, e, d, h):
-        _d = self.d_amp_embed(e) * torch.sin(self.d_frq_embed(e) * d + self.d_phi_embed(e))
-        _h = self.h_amp_embed(e) * torch.sin(self.h_frq_embed(e) * h + self.h_phi_embed(e))
+        _d = self.d_amp_embed(e) * torch.sin(self.d_frq_embed(e) * d.view(-1, 1) + self.d_phi_embed(e))
+        _h = self.h_amp_embed(e) * torch.sin(self.h_frq_embed(e) * h.view(-1, 1) + self.h_phi_embed(e))
         return _d + _h
 
     def forward(self, s, o, r, t):
