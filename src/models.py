@@ -57,7 +57,7 @@ class AbstractTA(nn.Module, AbstractDropout):
         rt_e = self._dropout(self.rt_embed(r, t))
         return self._score(s_e, o_e, rt_e)
 
-class AbstractDE(torch.nn.Module, AbstractNorm):
+class AbstractDE(torch.nn.Module):
     def _score(self, st, ot, r):
         raise NotImplementedError(f'this method should be implemented in {self.__class__}')
 
@@ -107,7 +107,7 @@ class AbstractDE(torch.nn.Module, AbstractNorm):
 
 class TTransE(nn.Module, AbstractNorm):
     def _score(self, s, o, r, t):
-        return torch.norm(s + r + t - o, p=self._norm, dim=1)
+        return self._norm(s + r + t - o)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super().__init__()
@@ -137,12 +137,12 @@ class TADistMult(AbstractTA):
 
 class TATransE(AbstractTA, AbstractNorm):
     def _score(self, s, o, rt):
-        return torch.norm(s + rt - o, p=self._norm, dim=1)
+        return self._norm(s + rt - o)
 
-class DEDistMult(DEX):
+class DEDistMult(AbstractDE, AbstractDropout):
     def _score(self, st, ot, r):
         return torch.sum(self._dropout(st * ot * r), dim=1)
 
-class DETransE(DEX):
+class DETransE(AbstractDE, AbstractDropout, AbstractNorm):
     def _score(self, st, ot, r):
-        return torch.norm(self._dropout(st + r - ot), p=self._norm, dim=1)
+        return self._norm(self._dropout(st + r - ot))
