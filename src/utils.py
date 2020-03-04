@@ -97,6 +97,7 @@ def _args():
     argparser.add_argument('-t', '--test', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
+    argparser.add_argument('-cg', '--cpu-gpu', default=False, action='store_true')
     argparser.add_argument('-th', '--threads', type=int, default=1)
     argparser.add_argument('-w', '--workers', type=int, default=1)
 
@@ -223,8 +224,8 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
     mdl.train()
     tr.sampler.set_epoch(e)
     for i, (p, n) in enumerate(tr, 1):
-        p = p.view(-1, p.shape[-1])
-        n = n.view(-1, n.shape[-1])
+        p = p.view(-1, p.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+        n = n.view(-1, n.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
 
         ls = _loss(args, p, n, mdl, ls_f)
         ls.backward()
@@ -252,23 +253,23 @@ def evaluate(args, b, mdl, mtr):
     if args.mode != 'tail':
         o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
         if args.model == 'TADistMult':
-            ort = (rt_embed * o_embed).cpu()
-            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            ort = (rt_embed * o_embed).to('cpu' if args.cpu_gpu else args.dvc)
+            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
-            ort = (o_embed - rt_embed).cpu()
-            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).numpy()
-        for i, s in enumerate(b[:, 0].numpy()):
+            ort = (o_embed - rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
+            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
+        for i, s in enumerate(b[:, 0].cpu().numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
         s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
         if args.model == 'TADistMult':
-            srt = (s_embed * rt_embed).cpu()
-            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).numpy()
+            srt = (s_embed * rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
+            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
         else:
-            srt = (s_embed + rt_embed).cpu()
-            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).numpy()
-        for i, o in enumerate(b[:, 1].numpy()):
+            srt = (s_embed + rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
+            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
+        for i, o in enumerate(b[:, 1].cpu().numpy()):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
 
@@ -292,9 +293,9 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
     mdl.eval()
     with torch.no_grad():
         for p, n, b in vd:
-            p = p.view(-1, p.shape[-1])
-            n = n.view(-1, n.shape[-1])
-            b = b.view(-1, b.shape[-1])
+            p = p.view(-1, p.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+            n = n.view(-1, n.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+            b = b.view(-1, b.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
             vd_ls += ls.item()
@@ -319,7 +320,7 @@ def test(args, mdl, ts, tb_sw):
     mdl.eval()
     with torch.no_grad():
         for b in ts:
-            b = b.view(-1, b.shape[-1]).to(args.dvc)
+            b = b.view(-1, b.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
             evaluate(args, b, mdl, mtr)
     mtr.allreduce()
 

@@ -13,7 +13,7 @@ class TTransE(nn.Module):
         self.dvc = args.dvc
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).cpu()  # NOTE: Too big for GPU memory!
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
         self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
@@ -56,7 +56,7 @@ class TAX(nn.Module):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).cpu()  # NOTE: Too big for GPU memory!
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
         self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
