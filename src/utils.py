@@ -79,7 +79,8 @@ def _args():
     argparser = argparse.ArgumentParser()
 
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
-    argparser.add_argument('-m', '--model', type=str, required=True, choices=['TTransE', 'TADistMult', 'TATransE'])
+    argparser.add_argument('-m', '--model', type=str, required=True,
+                           choices=['TTransE', 'TADistMult', 'TATransE', 'DEDistMult', 'DETransE'])
     argparser.add_argument('-d', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
