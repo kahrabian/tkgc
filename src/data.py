@@ -14,10 +14,12 @@ class Dataset(tDataset):
     def _format_time(self, t):
         t = datetime.fromtimestamp(int(t))
         d, h = t.day, t.hour  # NOTE: Could use other parts too!
-        if self._args.model == 'TTransE':
-            ft = [f'{d}{h}', ]
-        else:
+        if self._args.model.startswith('DE'):
+            ft = [f'{d}', f'{h}']
+        elif self._args.model.startswith('TA'):
             ft = [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
+        else:
+            ft = [f'{d}{h}', ]
         return ft
 
     def transform(self, idx, ts=True, ts_bs=None):

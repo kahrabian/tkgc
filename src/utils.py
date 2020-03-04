@@ -75,6 +75,11 @@ class BestMetric(object):
         return is_bst, self.bst
 
 
+class FakeTimeIndex(object):
+    def __len__(self): return 0
+    def __getitem__(self, ix): return int(ix)
+
+
 def _args():
     argparser = argparse.ArgumentParser()
 
@@ -140,7 +145,11 @@ def data(args):
     vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_idx_ln, 2)
     ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, 3)
 
-    t_idx = {e: i for i, e in enumerate(np.unique(np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()))}
+    if args.model.startswith('DE'):
+        t_idx = [FakeTimeIndex(),] * 2
+    else:
+        al_t = np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()
+        t_idx = {e: i for i, e in enumerate(np.unique(al_t))}
     t_idx_ln = len(t_idx)
 
     tr_ds.transform(t_idx, ts_bs={})
@@ -159,6 +168,8 @@ def data(args):
 
 
 def _model(args, e_cnt, r_cnt, t_cnt):
+    if args.model.startswith('DE'):
+        return getattr(models, args.model)(args, e_cnt, r_cnt)
     return getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt)
 
 
@@ -200,8 +211,14 @@ def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
 
 
 def _loss(args, p, n, mdl, loss_f):
-    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].squeeze().to(args.dvc)
-    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].squeeze().to(args.dvc)
+    p_s, p_o, p_r = p[:, 0], p[:, 1], p[:, 2].to(args.dvc)
+    n_s, n_o, n_r = n[:, 0], n[:, 1], n[:, 2].to(args.dvc)
+    if args.model.startswith('DE'):
+        p_t = p[:, 3:].squeeze()
+        n_t = n[:, 3:].squeeze()
+    else:
+        p_t = p[:, 3:].squeeze().to(args.dvc)
+        n_t = n[:, 3:].squeeze().to(args.dvc)
 
     if mdl.training:
         mdl.zero_grad()
