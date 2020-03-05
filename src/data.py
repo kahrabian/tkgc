@@ -58,6 +58,7 @@ class Dataset(tDataset):
     def _prepare(self, x):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
         n = np.repeat(x, self._args.negative_samples, axis=0)
+        self._corrupt(n)
         return p, n
 
     def __getitem__(self, i):

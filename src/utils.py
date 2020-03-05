@@ -232,11 +232,13 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
         tr_ls = 0
         t = tqdm(total=len(tr), desc=f'Epoch {e}/{args.epochs}')
 
+    _dvc = 'cpu' if args.cpu_gpu else args.dvc
+
     mdl.train()
     tr.sampler.set_epoch(e)
     for i, (p, n) in enumerate(tr, 1):
-        p = p.view(-1, p.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
-        n = n.view(-1, n.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+        p = p.view(-1, p.shape[-1]).to(_dvc)
+        n = n.view(-1, n.shape[-1]).to(_dvc)
 
         ls = _loss(args, p, n, mdl, ls_f)
         ls.backward()
@@ -245,7 +247,7 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
         if hvd.rank() == 0:
             tr_ls += ls.item()
             tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
-            t.set_postfix(loss=f'{tr_ls / i:.4f}')
+            t.set_postfix(loss=f'{tr_ls / i:.8f}')
             t.update()
 
     if hvd.rank() == 0:
@@ -267,19 +269,28 @@ def evaluate(args, b, mdl, mtr):
     else:
         rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
 
+    _dvc = 'cpu' if args.cpu_gpu else args.dvc
+
     if args.mode != 'tail':
         if args.model.startswith('DE'):
             o_e = mdl.e_embed(b[:, 1]).to(args.dvc)
             t_o = mdl._t_embed(b[:, 1], ts_t[:, 0], ts_t[:, 1])
             o_embed = torch.cat((o_e, t_o), 1)
+
+            s_embed = torch.cat([
+                torch.cat((mdl.e_embed.weight,
+                           mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
+                           mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), 1)
+                for d, h in b[:, 3:].squeeze()], 1)
         else:
             o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
+            s_embed = mdl.e_embed.weight
         if args.model.endswith('DistMult'):
-            ort = (rt_embed * o_embed).to('cpu' if args.cpu_gpu else args.dvc)
-            s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
+            ort = (rt_embed * o_embed).to(_dvc)
+            s_r = torch.matmul(ort, s_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
         elif args.model.endswith('TransE'):
-            ort = (o_embed - rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
-            s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
+            ort = (o_embed - rt_embed).to(_dvc)
+            s_r = torch.cdist(s_embed, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
         for i, s in enumerate(b[:, 0].cpu().numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
@@ -290,12 +301,27 @@ def evaluate(args, b, mdl, mtr):
             s_embed = torch.cat((s_e, t_s), 1)
         else:
             s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
+            o_embed = mdl.e_embed.weight
         if args.model.endswith('DistMult'):
-            srt = (s_embed * rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
-            o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
+            srt = (s_embed * rt_embed).to(_dvc)
+            if args.model.startswith('DE'):
+                o_r = torch.stack([
+                    torch.matmul(srt[i, :], torch.cat((mdl.e_embed.weight,
+                            mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
+                            mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight))).t())
+                    for i, (d, h) in b[:, 3:].squeeze()], 1).argsort(dim=1, descending=True).cpu().numpy()
+            else:
+                o_r = torch.matmul(srt, o_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
         elif args.model.endswith('TransE'):
-            srt = (s_embed + rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
-            o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
+            srt = (s_embed + rt_embed).to(_dvc)
+            if args.model.startswith('DE'):
+                o_r = torch.stack([
+                    torch.cdist(srt[i, :].view(1, -1), torch.cat((mdl.e_embed.weight,
+                            mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
+                            mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight))), p=_p(args))
+                    for i, (d, h) in b[:, 3:].squeeze()], 1).argsort(dim=1, descending=True).cpu().numpy()
+            else:
+                o_r = torch.cdist(srt, o_embed, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
         for i, o in enumerate(b[:, 1].cpu().numpy()):
             mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
 
@@ -317,12 +343,15 @@ def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
 def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
     vd_ls = 0
     mtr = Metric()
+
+    _dvc = 'cpu' if args.cpu_gpu else args.dvc
+
     mdl.eval()
     with torch.no_grad():
         for p, n, b in vd:
-            p = p.view(-1, p.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
-            n = n.view(-1, n.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
-            b = b.view(-1, b.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+            p = p.view(-1, p.shape[-1]).to(_dvc)
+            n = n.view(-1, n.shape[-1]).to(_dvc)
+            b = b.view(-1, b.shape[-1]).to(_dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
             vd_ls += ls.item()
@@ -344,10 +373,13 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
 
 def test(args, mdl, ts, tb_sw):
     mtr = Metric()
+
+    _dvc = 'cpu' if args.cpu_gpu else args.dvc
+
     mdl.eval()
     with torch.no_grad():
         for b in ts:
-            b = b.view(-1, b.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+            b = b.view(-1, b.shape[-1]).to(_dvc)
 
             evaluate(args, b, mdl, mtr)
     mtr.allreduce()
