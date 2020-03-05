@@ -260,28 +260,40 @@ def _p(args):
 
 def evaluate(args, b, mdl, mtr):
     ts_r, ts_t = b[:, 2].to(args.dvc), b[:, 3:].squeeze().to(args.dvc)
-    if args.model == 'TTransE':
-        rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
-    else:
+    if args.model.startswith('DE'):
+        rt_embed = mdl.r_embed(ts_r)
+    elif args.model.startswith('TA'):
         rt_embed = mdl.rt_embed(ts_r, ts_t)
+    else:
+        rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
 
     if args.mode != 'tail':
-        o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
-        if args.model == 'TADistMult':
+        if args.model.startswith('DE'):
+            o_e = mdl.e_embed(b[:, 1]).to(args.dvc)
+            t_o = mdl._t_embed(b[:, 1], ts_t[:, 0], ts_t[:, 1])
+            o_embed = torch.cat((o_e, t_o), 1)
+        else:
+            o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
+        if args.model.endswith('DistMult'):
             ort = (rt_embed * o_embed).to('cpu' if args.cpu_gpu else args.dvc)
             s_r = torch.matmul(ort, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
-        else:
+        elif args.model.endswith('TransE'):
             ort = (o_embed - rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
             s_r = torch.cdist(mdl.e_embed.weight, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
         for i, s in enumerate(b[:, 0].cpu().numpy()):
             mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
 
     if args.mode != 'head':
-        s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
-        if args.model == 'TADistMult':
+        if args.model.startswith('DE'):
+            s_e = mdl.e_embed(b[:, 0]).to(args.dvc)
+            t_s = mdl._t_embed(b[:, 0], ts_t[:, 0], ts_t[:, 1])
+            s_embed = torch.cat((s_e, t_s), 1)
+        else:
+            s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
+        if args.model.endswith('DistMult'):
             srt = (s_embed * rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
             o_r = torch.matmul(srt, mdl.e_embed.weight.t()).argsort(dim=1, descending=True).cpu().numpy()
-        else:
+        elif args.model.endswith('TransE'):
             srt = (s_embed + rt_embed).to('cpu' if args.cpu_gpu else args.dvc)
             o_r = torch.cdist(srt, mdl.e_embed.weight, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
         for i, o in enumerate(b[:, 1].cpu().numpy()):
