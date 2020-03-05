@@ -91,14 +91,16 @@ class AbstractDE(torch.nn.Module):
         nn.init.xavier_uniform_(self.h_amp_embed.weight)
 
     def _t_embed(self, e, d, h):
-        _d = self.d_amp_embed(e) * torch.sin(self.d_frq_embed(e) * d.view(-1, 1) + self.d_phi_embed(e))
-        _h = self.h_amp_embed(e) * torch.sin(self.h_frq_embed(e) * h.view(-1, 1) + self.h_phi_embed(e))
+        _d = self.d_amp_embed(e).to(self.dvc) * torch.sin(d.view(-1, 1) * self.d_frq_embed(e).to(self.dvc) + \
+                                                          self.d_phi_embed(e).to(self.dvc))
+        _h = self.h_amp_embed(e).to(self.dvc) * torch.sin(h.view(-1, 1) * self.h_frq_embed(e).to(self.dvc) + \
+                                                          self.h_phi_embed(e).to(self.dvc))
         return _d + _h
 
     def forward(self, s, o, r, t):
         d, h = t[:, 0], t[:, 1]
-        s_e = self.e_embed(s)
-        o_e = self.e_embed(o)
+        s_e = self.e_embed(s).to(self.dvc)
+        o_e = self.e_embed(o).to(self.dvc)
         r_e = self.r_embed(r)
         t_s = self._t_embed(s, d, h)
         t_o = self._t_embed(o, d, h)

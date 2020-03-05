@@ -209,14 +209,8 @@ def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
 
 
 def _loss(args, p, n, mdl, loss_f):
-    p_s, p_o, p_r = p[:, 0], p[:, 1], p[:, 2].to(args.dvc)
-    n_s, n_o, n_r = n[:, 0], n[:, 1], n[:, 2].to(args.dvc)
-    if args.model.startswith('DE'):
-        p_t = p[:, 3:].squeeze()
-        n_t = n[:, 3:].squeeze()
-    else:
-        p_t = p[:, 3:].squeeze().to(args.dvc)
-        n_t = n[:, 3:].squeeze().to(args.dvc)
+    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].squeeze().to(args.dvc)
+    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].squeeze().to(args.dvc)
 
     if mdl.training:
         mdl.zero_grad()
@@ -258,6 +252,10 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
         t.close()
         tr_ls /= len(tr)
         tb_sw.add_scalar(f'loss/train', tr_ls, e)
+
+
+def _p(args):
+    return 1 if args.model.endswith('TTransE') and args.l1 else 2
 
 
 def evaluate(args, b, mdl, mtr):
@@ -338,13 +336,10 @@ def test(args, mdl, ts, tb_sw):
     with torch.no_grad():
         for b in ts:
             b = b.view(-1, b.shape[-1]).to('cpu' if args.cpu_gpu else args.dvc)
+
             evaluate(args, b, mdl, mtr)
     mtr.allreduce()
 
     if hvd.rank() == 0:
         print(mtr)
         tb_sw.add_hparams(vars(args), dict(mtr))
-
-
-def _p(args):
-    return 1 if args.model.endswith('TTransE') and args.l1 else 2
