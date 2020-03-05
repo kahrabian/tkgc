@@ -146,7 +146,7 @@ def data(args):
     ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, 3)
 
     if args.model.startswith('DE'):
-        t_idx = [FakeTimeIndex(),] * 2
+        t_idx = FakeTimeIndex()
     else:
         al_t = np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()
         t_idx = {e: i for i, e in enumerate(np.unique(al_t))}
@@ -184,9 +184,7 @@ def _resume(args, mdl, opt):
 
 
 def _loss_f(args):
-    if args.model == 'TADistMult':
-        return nn.CrossEntropyLoss()
-    return nn.MarginRankingLoss(args.margin)
+    return nn.MarginRankingLoss(args.margin) if args.model == 'TTransE' else nn.CrossEntropyLoss()
 
 
 def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
@@ -225,11 +223,11 @@ def _loss(args, p, n, mdl, loss_f):
     s_p = mdl(p_s, p_o, p_r, p_t)
     s_n = mdl(n_s, n_o, n_r, n_t)
 
-    if args.model.endswith('TransE'):
+    if args.model == 'TTransE':
         loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape + s_n.shape).to(args.dvc))
     else:
-        x = torch.cat((s_p, s_n.view(args.batch_size, -1)), dim=1)
-        y = torch.cat(torch.zeros(x.shape[0]).to(args.dvc))
+        x = torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
+        y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
 
     return loss
@@ -349,4 +347,4 @@ def test(args, mdl, ts, tb_sw):
 
 
 def _p(args):
-    return 1 if args.model == 'TTransE' and args.l1 else 2
+    return 1 if args.model.endswith('TTransE') and args.l1 else 2
