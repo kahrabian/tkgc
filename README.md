@@ -5,8 +5,8 @@ This repository contains the implementation of the following algorithms:
 - [x] TTransE
 - [x] TA-DistMult
 - [x] TA-TransE
-- [] DE-DistMult
-- [] DE-TransE
+- [x] DE-DistMult
+- [x] DE-TransE
 
 ## Installation
 
