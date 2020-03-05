@@ -190,7 +190,7 @@ def _loss_f(args):
 def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
     mdl = _model(args, e_idx_ln, r_idx_ln, t_idx_ln)
 
-    lr_sc = hvd.local_size() if hvd.nccl_built() else 1 if args.adasum else hvd.size()
+    lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if args.adasum else hvd.size()
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate * lr_sc, weight_decay=args.weight_decay)
 
     st_e, bst_ls = _resume(args, mdl, opt) if args.resume != '' else (1, None)
@@ -247,7 +247,7 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
         if hvd.rank() == 0:
             tr_ls += ls.item()
             tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
-            t.set_postfix(loss=f'{tr_ls / i:.8f}')
+            t.set_postfix(loss=f'{tr_ls / i:.4f}')
             t.update()
 
     if hvd.rank() == 0:
