@@ -3,47 +3,28 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class TTransE(nn.Module):
-    def _score(self, s, o, r, t):
-        return torch.norm(s + r + t - o, p=1 if self.l1 else 2, dim=1)
-
-    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super().__init__()
-        self.l1 = args.l1
-
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(dvc)
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(dvc)
-        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(dvc)
-        nn.init.xavier_uniform_(self.e_embed.weight)
-        nn.init.xavier_uniform_(self.r_embed.weight)
-        nn.init.xavier_uniform_(self.t_embed.weight)
-
-    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
-        p_s_e = self.e_embed(p_s)
-        p_o_e = self.e_embed(p_o)
-        p_r_e = self.r_embed(p_r)
-        p_t_e = self.t_embed(p_t)
-
-        n_s_e = self.e_embed(n_s)
-        n_o_e = self.e_embed(n_o)
-        n_r_e = self.r_embed(n_r)
-        n_t_e = self.t_embed(p_t)
-
-        pos = self._score(p_s_e, p_o_e, p_r_e, p_t_e)
-        neg = self._score(n_s_e, n_o_e, n_r_e, n_t_e)
-
-        return pos, neg
+class AbstractNorm(object):
+    def _norm(self, x):
+        return torch.norm(x, p=1 if self.l1 else 2, dim=1)
 
 
-class TAX(nn.Module):
+class AbstractDropout(object):
+    def _dropout(self, x):
+        return F.dropout(x, p=self.dropout, training=self.training)
+
+
+class AbstractTA(nn.Module, AbstractDropout):
     def _score(self, s, o, rt):
         raise NotImplementedError(f'this method should be implemented in {self.__class__}')
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
+    def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super().__init__()
-        self.dropout = args.dropout
 
-        self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(dvc)
+        self.dvc = args.dvc
+        self.dropout = args.dropout
+        self.l1 = args.l1
+
+        self.lstm = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(self.dvc)
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
                 nn.init.xavier_uniform_(param)
@@ -52,9 +33,9 @@ class TAX(nn.Module):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(dvc)
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(dvc)
-        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(dvc)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
+        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
@@ -71,32 +52,103 @@ class TAX(nn.Module):
 
         return h.squeeze()
 
-    def forward(self, p_s, p_o, p_r, p_t, n_s, n_o, n_r, n_t):
-        p_s_e = F.dropout(self.e_embed(p_s), p=self.dropout, training=self.training)
-        p_o_e = F.dropout(self.e_embed(p_o), p=self.dropout, training=self.training)
-        p_rt_e = F.dropout(self.rt_embed(p_r, p_t), p=self.dropout, training=self.training)
-
-        n_s_e = F.dropout(self.e_embed(n_s), p=self.dropout, training=self.training)
-        n_o_e = F.dropout(self.e_embed(n_o), p=self.dropout, training=self.training)
-        n_rt_e = F.dropout(self.rt_embed(n_r, n_t), p=self.dropout, training=self.training)
-
-        pos = self._score(p_s_e, p_o_e, p_rt_e)
-        neg = self._score(n_s_e, n_o_e, n_rt_e)
-
-        return pos, neg
+    def forward(self, s, o, r, t):
+        s_e = self._dropout(self.e_embed(s).to(self.dvc))
+        o_e = self._dropout(self.e_embed(o).to(self.dvc))
+        rt_e = self._dropout(self.rt_embed(r, t))
+        return self._score(s_e, o_e, rt_e)
 
 
-class TADistMult(TAX):
+class AbstractDE(torch.nn.Module):
+    def _score(self, st, ot, r):
+        raise NotImplementedError(f'this method should be implemented in {self.__class__}')
+
+    def __init__(self, args, e_cnt, r_cnt):
+        super().__init__()
+
+        self.dvc = args.dvc
+        self.dropout = args.dropout
+        self.l1 = args.l1
+
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size * 2).to(self.dvc)
+        nn.init.xavier_uniform_(self.e_embed.weight)
+        nn.init.xavier_uniform_(self.r_embed.weight)
+
+        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        nn.init.xavier_uniform_(self.d_frq_embed.weight)
+        nn.init.xavier_uniform_(self.h_frq_embed.weight)
+
+        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        nn.init.xavier_uniform_(self.d_phi_embed.weight)
+        nn.init.xavier_uniform_(self.h_phi_embed.weight)
+
+        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        nn.init.xavier_uniform_(self.d_amp_embed.weight)
+        nn.init.xavier_uniform_(self.h_amp_embed.weight)
+
+    def _t_embed(self, e, d, h):
+        _d = self.d_amp_embed(e).to(self.dvc) * torch.sin(d.view(-1, 1) * self.d_frq_embed(e).to(self.dvc) + \
+                                                          self.d_phi_embed(e).to(self.dvc))
+        _h = self.h_amp_embed(e).to(self.dvc) * torch.sin(h.view(-1, 1) * self.h_frq_embed(e).to(self.dvc) + \
+                                                          self.h_phi_embed(e).to(self.dvc))
+        return _d + _h
+
+    def forward(self, s, o, r, t):
+        d, h = t[:, 0], t[:, 1]
+        s_e = self.e_embed(s).to(self.dvc)
+        o_e = self.e_embed(o).to(self.dvc)
+        r_e = self.r_embed(r)
+        t_s = self._t_embed(s, d, h)
+        t_o = self._t_embed(o, d, h)
+        s_t = torch.cat((s_e, t_s), 1)
+        o_t = torch.cat((o_e, t_o), 1)
+        return self._score(s_t, o_t, r_e)
+
+
+class TTransE(nn.Module, AbstractNorm):
+    def _score(self, s, o, r, t):
+        return self._norm(s + r + t - o)
+
+    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+        super().__init__()
+
+        self.dvc = args.dvc
+        self.l1 = args.l1
+
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to('cpu' if args.cpu_gpu else self.dvc)
+        self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
+        self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
+        nn.init.xavier_uniform_(self.e_embed.weight)
+        nn.init.xavier_uniform_(self.r_embed.weight)
+        nn.init.xavier_uniform_(self.t_embed.weight)
+
+    def forward(self, s, o, r, t):
+        s_e = self.e_embed(s).to(self.dvc)
+        o_e = self.e_embed(o).to(self.dvc)
+        r_e = self.r_embed(r)
+        t_e = self.t_embed(t)
+        return self._score(s_e, o_e, r_e, t_e)
+
+
+class TADistMult(AbstractTA):
     def _score(self, s, o, rt):
         return torch.sum(s * o * rt, dim=1)
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super().__init__(args, e_cnt, r_cnt, t_cnt, dvc)
 
-
-class TATransE(TAX):
+class TATransE(AbstractTA, AbstractNorm):
     def _score(self, s, o, rt):
-        return torch.norm(s + rt - o, p=2, dim=1)
+        return self._norm(s + rt - o)
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt, dvc):
-        super().__init__(args, e_cnt, r_cnt, t_cnt, dvc)
+
+class DEDistMult(AbstractDE, AbstractDropout):
+    def _score(self, st, ot, r):
+        return torch.sum(self._dropout(st * ot * r), dim=1)
+
+
+class DETransE(AbstractDE, AbstractDropout, AbstractNorm):
+    def _score(self, st, ot, r):
+        return self._norm(self._dropout(st + r - ot))

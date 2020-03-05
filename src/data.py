@@ -1,7 +1,4 @@
-import math
 import numpy as np
-import os
-import torch
 from datetime import datetime
 from torch.utils.data import Dataset as tDataset
 
@@ -16,11 +13,13 @@ class Dataset(tDataset):
 
     def _format_time(self, t):
         t = datetime.fromtimestamp(int(t))
-        m, d, h = t.month, t.day, t.hour  # NOTE: Could use other parts too!
-        if self._args.model == 'TTransE':
-            ft = [f'{m}{d}{h}', ]
+        d, h = t.day, t.hour  # NOTE: Could use other parts too!
+        if self._args.model.startswith('DE'):
+            ft = [f'{d}', f'{h}']
+        elif self._args.model.startswith('TA'):
+            ft = [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
         else:
-            ft = [f'{m}m', ] + [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
+            ft = [f'{d}{h}', ]
         return ft
 
     def transform(self, idx, ts=True, ts_bs=None):
@@ -30,12 +29,12 @@ class Dataset(tDataset):
     def __array__(self):
         return self._d
 
-    def __init__(self, args, fn, e_idx_ln, ns=True):
+    def __init__(self, args, fn, e_idx_ln, md):
         super().__init__()
 
         self._args = args
         self._e_idx_ln = e_idx_ln
-        self._ns = ns
+        self._md = md
 
         self._load(fn)
         self._format()
@@ -43,25 +42,28 @@ class Dataset(tDataset):
     def __len__(self):
         return self._d.shape[1]
 
-    def _check(self, x, th, s):
-        x = x.copy()
-        x[th] = s
-        return self._ts.get(tuple(x), False)
+    def _check(self, p_i, ix, s):
+        p_i[ix] = s
+        return self._ts.get(tuple(p_i), False)
 
     def _corrupt(self, p):
-        n = p.copy()
-        for i, x in enumerate(n):
-            ht = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
+        for i, p_i in enumerate(p):
+            p_i = p_i.copy()
+            ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
             s = np.random.randint(0, self._e_idx_ln)
-            while s == x[ht] or (self._args.filter and self._check(x, ht, s)):
+            while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
                 s = np.random.randint(0, self._e_idx_ln)
-            n[i][ht] = s
-        return n
+            p[i][ix] = s
 
     def _prepare(self, x):
-        p = np.repeat(x, self._args.negative_samples if self._args.model != 'TDistMult' else 1, axis=0)
-        n = self._corrupt(p)
+        p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
+        n = np.repeat(x, self._args.negative_samples, axis=0)
         return p, n
 
     def __getitem__(self, i):
-        return self._prepare(self._d[:, i]) if self._ns else self._d[:, i]
+        if self._md == 1:
+            return self._prepare(self._d[:, i])
+        if self._md == 2:
+            return self._prepare(self._d[:, i]) + (self._d[:, i],)
+        if self._md == 3:
+            return self._d[:, i]
