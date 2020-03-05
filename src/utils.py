@@ -185,7 +185,7 @@ def _resume(args, mdl, opt):
 
 def _loss_f(args):
     if args.model == 'TADistMult':
-        return nn.BCEWithLogitsLoss(reduction='mean')
+        return nn.CrossEntropyLoss()
     return nn.MarginRankingLoss(args.margin)
 
 
@@ -225,12 +225,12 @@ def _loss(args, p, n, mdl, loss_f):
     s_p = mdl(p_s, p_o, p_r, p_t)
     s_n = mdl(n_s, n_o, n_r, n_t)
 
-    if args.model == 'TADistMult':
-        x = torch.cat((s_p, s_n))
-        y = torch.cat((torch.ones(s_p.shape), torch.zeros(s_n.shape))).to(args.dvc)
-        loss = loss_f(x, y)
-    else:
+    if args.model.endswith('TransE'):
         loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape + s_n.shape).to(args.dvc))
+    else:
+        x = torch.cat((s_p, s_n.view(args.batch_size, -1)), dim=1)
+        y = torch.cat(torch.zeros(x.shape[0]).to(args.dvc))
+        loss = loss_f(x, y)
 
     return loss
 

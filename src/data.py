@@ -42,24 +42,22 @@ class Dataset(tDataset):
     def __len__(self):
         return self._d.shape[1]
 
-    def _check(self, x, th, s):
-        x = x.copy()
-        x[th] = s
-        return self._ts.get(tuple(x), False)
+    def _check(self, p_i, ix, s):
+        p_i[ix] = s
+        return self._ts.get(tuple(p_i), False)
 
     def _corrupt(self, p):
-        n = p.copy()
-        for i, x in enumerate(n):
-            ht = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
+        for i, p_i in enumerate(p):
+            p_i = p_i.copy()
+            ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
             s = np.random.randint(0, self._e_idx_ln)
-            while s == x[ht] or (self._args.filter and self._check(x, ht, s)):
+            while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
                 s = np.random.randint(0, self._e_idx_ln)
-            n[i][ht] = s
-        return n
+            p[i][ix] = s
 
     def _prepare(self, x):
-        p = np.repeat(x, self._args.negative_samples if self._args.model != 'TDistMult' else 1, axis=0)
-        n = self._corrupt(p)
+        p = np.repeat(x, self._args.negative_samples) if self._args.model == 'TTransE' else x
+        n = self._corrupt(np.repeat(x, self._args.negative_samples))
         return p, n
 
     def __getitem__(self, i):
