@@ -48,7 +48,7 @@ class AbstractTA(nn.Module, AbstractDropout):
         t = t.reshape(-1)
 
         t_e = self.t_embed(t).view(bs, ts, -1)
-        s_e = torch.cat((r_e.unsqueeze(1), t_e), 1)
+        s_e = torch.cat((r_e.unsqueeze(1), t_e), dim=1)
         _, (h, _) = self.lstm(s_e)
 
         return h.squeeze()
@@ -106,8 +106,8 @@ class AbstractDE(torch.nn.Module):
         r_e = self.r_embed(r)
         t_s = self._t_embed(s, d, h)
         t_o = self._t_embed(o, d, h)
-        s_t = torch.cat((s_e, t_s), 1)
-        o_t = torch.cat((o_e, t_o), 1)
+        s_t = torch.cat((s_e, t_s), dim=1)
+        o_t = torch.cat((o_e, t_o), dim=1)
         return self._score(s_t, o_t, r_e)
 
 

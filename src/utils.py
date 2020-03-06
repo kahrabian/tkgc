@@ -263,14 +263,14 @@ def _p(args):
 def _evaluate_de(mdl, d, h):
     return torch.cat((mdl.e_embed.weight,
                       mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
-                      mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), 1)
+                      mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), dim=1)
 
 
 def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
         t_x = mdl._t_embed(x, t[:, 0], t[:, 1])
-        x_embed = torch.cat((x_e, t_x), 1)
+        x_embed = torch.cat((x_e, t_x), dim=1)
     else:
         x_embed = mdl.e_embed(x).to(args.dvc)
         y_embed = mdl.e_embed.weight
