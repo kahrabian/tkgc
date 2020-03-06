@@ -260,6 +260,38 @@ def _p(args):
     return 1 if args.model.endswith('TTransE') and args.l1 else 2
 
 
+def _evaluate_de(mdl, d, h):
+    return torch.cat((mdl.e_embed.weight,
+                      mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
+                      mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), 1)
+
+
+def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
+    if args.model.startswith('DE'):
+        x_e = mdl.e_embed(x).to(args.dvc)
+        t_x = mdl._t_embed(x, t[:, 0], t[:, 1])
+        x_embed = torch.cat((x_e, t_x), 1)
+    else:
+        x_embed = mdl.e_embed(x).to(args.dvc)
+        y_embed = mdl.e_embed.weight
+    if args.model.endswith('DistMult'):
+        xrt = (x_embed * rt_embed).to(_dvc)
+        if args.model.startswith('DE'):
+            y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h).t())
+                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=True).cpu().numpy()
+        else:
+            y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
+    elif args.model.endswith('TransE'):
+        xrt = (x_embed + (1 if md == 'H' else -1) * rt_embed).to(_dvc)
+        if args.model.startswith('DE'):
+            y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h), p=_p(args))
+                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=True).cpu().numpy()
+        else:
+            y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
+    for i, y_i in enumerate(y.cpu().numpy()):
+        mtr.update(np.argwhere(y_r[i] == y_i)[0, 0] + 1)
+
+
 def evaluate(args, b, mdl, mtr):
     ts_r, ts_t = b[:, 2].to(args.dvc), b[:, 3:].squeeze().to(args.dvc)
     if args.model.startswith('DE'):
@@ -272,58 +304,10 @@ def evaluate(args, b, mdl, mtr):
     _dvc = 'cpu' if args.cpu_gpu else args.dvc
 
     if args.mode != 'tail':
-        if args.model.startswith('DE'):
-            o_e = mdl.e_embed(b[:, 1]).to(args.dvc)
-            t_o = mdl._t_embed(b[:, 1], ts_t[:, 0], ts_t[:, 1])
-            o_embed = torch.cat((o_e, t_o), 1)
-
-            s_embed = torch.cat([
-                torch.cat((mdl.e_embed.weight,
-                           mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
-                           mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), 1)
-                for d, h in b[:, 3:].squeeze()], 1)
-        else:
-            o_embed = mdl.e_embed(b[:, 1]).to(args.dvc)
-            s_embed = mdl.e_embed.weight
-        if args.model.endswith('DistMult'):
-            ort = (rt_embed * o_embed).to(_dvc)
-            s_r = torch.matmul(ort, s_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
-        elif args.model.endswith('TransE'):
-            ort = (o_embed - rt_embed).to(_dvc)
-            s_r = torch.cdist(s_embed, ort, p=_p(args)).t().argsort(dim=1, descending=True).cpu().numpy()
-        for i, s in enumerate(b[:, 0].cpu().numpy()):
-            mtr.update(np.argwhere(s_r[i] == s)[0, 0] + 1)
+        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, 'H', mtr, _dvc)
 
     if args.mode != 'head':
-        if args.model.startswith('DE'):
-            s_e = mdl.e_embed(b[:, 0]).to(args.dvc)
-            t_s = mdl._t_embed(b[:, 0], ts_t[:, 0], ts_t[:, 1])
-            s_embed = torch.cat((s_e, t_s), 1)
-        else:
-            s_embed = mdl.e_embed(b[:, 0]).to(args.dvc)
-            o_embed = mdl.e_embed.weight
-        if args.model.endswith('DistMult'):
-            srt = (s_embed * rt_embed).to(_dvc)
-            if args.model.startswith('DE'):
-                o_r = torch.stack([
-                    torch.matmul(srt[i, :], torch.cat((mdl.e_embed.weight,
-                            mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
-                            mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight))).t())
-                    for i, (d, h) in b[:, 3:].squeeze()], 1).argsort(dim=1, descending=True).cpu().numpy()
-            else:
-                o_r = torch.matmul(srt, o_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
-        elif args.model.endswith('TransE'):
-            srt = (s_embed + rt_embed).to(_dvc)
-            if args.model.startswith('DE'):
-                o_r = torch.stack([
-                    torch.cdist(srt[i, :].view(1, -1), torch.cat((mdl.e_embed.weight,
-                            mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
-                            mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight))), p=_p(args))
-                    for i, (d, h) in b[:, 3:].squeeze()], 1).argsort(dim=1, descending=True).cpu().numpy()
-            else:
-                o_r = torch.cdist(srt, o_embed, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
-        for i, o in enumerate(b[:, 1].cpu().numpy()):
-            mtr.update(np.argwhere(o_r[i] == o)[0, 0] + 1)
+        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, 'T', mtr, _dvc)
 
 
 def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
