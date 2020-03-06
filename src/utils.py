@@ -5,6 +5,11 @@ import os
 import shutil
 import torch
 import torch.nn as nn
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.distributed.parallel_loader as pl
+except ImportError:
+    pass
 from torch.backends import cudnn
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -105,7 +110,8 @@ def _args():
     argparser.add_argument('-t', '--test', default=False, action='store_true')
     argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
-    argparser.add_argument('-cg', '--cpu-gpu', default=False, action='store_true')
+    argparser.add_argument('-tp', '--tpu', default=False, action='store_true')
+    argparser.add_argument('-ac', '--aux_cpu', default=False, action='store_true')
     argparser.add_argument('-th', '--threads', type=int, default=1)
     argparser.add_argument('-w', '--workers', type=int, default=1)
 
@@ -114,25 +120,49 @@ def _args():
     return args
 
 
-def initialize():
-    hvd.init()
+def rank(args):
+    if args.tpu:
+        return xm.get_ordinal()
+    return hvd.rank()
 
+
+def initialize():
     args = _args()
 
+    if not args.tpu:
+        hvd.init()
+
     if args.deterministic:
-        torch.manual_seed(hvd.rank())  # NOTE: Reproducability
+        torch.manual_seed(rank(args))  # NOTE: Reproducability
 
     torch.set_num_threads(args.threads)
 
-    args.dvc = f'cuda:{hvd.local_rank()}' if torch.cuda.is_available() else 'cpu'
-    if args.dvc != 'cpu':
+    if args.tpu:
+        dvc = xm.xla_device()
+    elif torch.cuda.is_available():
         cudnn.benchmark = not args.deterministic  # NOTE: Reproducability
         cudnn.deterministic = args.deterministic  # NOTE: Reproducability
-        torch.cuda.set_device(args.dvc)
 
-    print(f'device: {args.dvc}\n' + '\n'.join(map(lambda x: f'{x[0]}: {x[1]}', sorted(vars(args).items()))))
+        dvc = torch.device(f'cuda:{hvd.local_rank()}')
+        torch.cuda.set_device(dvc)
+    else:
+        dvc = torch.device(f'cpu')
+
+    aux_dvc = torch.device(f'cpu') if args.aux_cpu else dvc
+
+    print(f'device: {dvc.type}\naux_device: {aux_dvc.type}')
+    print('\n'.join(map(lambda x: f'{x[0]}: {x[1]}', sorted(vars(args).items()))))
+
+    args.dvc = dvc
+    args.aux_dvc = aux_dvc
 
     return args
+
+
+def size(args):
+    if args.tpu:
+        return xm.xrt_world_size()
+    return hvd.size()
 
 
 def data(args):
@@ -158,13 +188,32 @@ def data(args):
     vd_ds.transform(t_idx, ts_bs=tr_ds._ts)
     ts_ds.transform(t_idx, ts=False)
 
-    tr_smp = DistributedSampler(tr_ds, num_replicas=hvd.size(), rank=hvd.rank())
-    vd_smp = DistributedSampler(vd_ds, num_replicas=hvd.size(), rank=hvd.rank())
-    ts_smp = DistributedSampler(ts_ds, num_replicas=hvd.size(), rank=hvd.rank())
+    tr_smp = DistributedSampler(tr_ds, num_replicas=size(args), rank=rank(args))
+    vd_smp = DistributedSampler(vd_ds, num_replicas=size(args), rank=rank(args), shuffle=False)
+    ts_smp = DistributedSampler(ts_ds, num_replicas=size(args), rank=rank(args), shuffle=False)
 
-    tr = DataLoader(tr_ds, batch_size=args.batch_size, sampler=tr_smp, num_workers=args.workers, pin_memory=True)
-    vd = DataLoader(vd_ds, batch_size=args.batch_size, sampler=vd_smp, num_workers=args.workers, pin_memory=True)
-    ts = DataLoader(ts_ds, batch_size=args.batch_size, sampler=ts_smp, num_workers=args.workers, pin_memory=True)
+    tr_dl = DataLoader(tr_ds,
+                       batch_size=args.batch_size,
+                       sampler=tr_smp,
+                       num_workers=args.workers,
+                       pin_memory=not args.tpu,
+                       drop_last=args.tpu)
+    vd_dl = DataLoader(vd_ds,
+                       batch_size=args.batch_size,
+                       sampler=vd_smp,
+                       num_workers=args.workers,
+                       pin_memory=not args.tpu,
+                       drop_last=args.tpu)
+    ts_dl = DataLoader(ts_ds,
+                       batch_size=args.batch_size,
+                       sampler=ts_smp,
+                       num_workers=args.workers,
+                       pin_memory=not args.tpu,
+                       drop_last=args.tpu)
+
+    tr = pl.ParallelLoader(tr_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else tr_dl
+    vd = pl.ParallelLoader(vd_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else vd_dl
+    ts = pl.ParallelLoader(ts_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else ts_dl
 
     return tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln
 
@@ -175,11 +224,15 @@ def _model(args, e_cnt, r_cnt, t_cnt):
     return getattr(models, args.model)(args, e_cnt, r_cnt, t_cnt)
 
 
+def is_master(args):
+    return rank(args) == 0
+
+
 def _resume(args, mdl, opt):
     if not os.path.exists(args.resume):
         raise FileNotFoundError('can\'t find the saved model with the given path')
     ckpt = torch.load(args.resume, map_location=args.dvc)
-    if hvd.rank() == 0:
+    if is_master(args):
         mdl.load_state_dict(ckpt['mdl'])
         opt.load_state_dict(ckpt['opt'])
     return ckpt['e'], ckpt['bst_ls']
@@ -192,18 +245,19 @@ def _loss_f(args):
 def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
     mdl = _model(args, e_idx_ln, r_idx_ln, t_idx_ln)
 
-    lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if args.adasum else hvd.size()
+    lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if not args.tpu and args.adasum else size(args)
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate * lr_sc, weight_decay=args.weight_decay)
 
     st_e, bst_ls = _resume(args, mdl, opt) if args.resume != '' else (1, None)
 
-    opt = hvd.DistributedOptimizer(opt,
-                                   named_parameters=mdl.named_parameters(),
-                                   compression=hvd.Compression.fp16 if args.fp16 else hvd.Compression.none,
-                                   op=hvd.Adasum if args.adasum else hvd.Average)
+    if not args.tpu:
+        opt = hvd.DistributedOptimizer(opt,
+                                       named_parameters=mdl.named_parameters(),
+                                       compression=hvd.Compression.fp16 if args.fp16 else hvd.Compression.none,
+                                       op=hvd.Adasum if args.adasum else hvd.Average)
 
-    hvd.broadcast_parameters(mdl.state_dict(), root_rank=0)
-    hvd.broadcast_optimizer_state(opt, root_rank=0)
+        hvd.broadcast_parameters(mdl.state_dict(), root_rank=0)
+        hvd.broadcast_optimizer_state(opt, root_rank=0)
 
     lr_sc = torch.optim.lr_scheduler.StepLR(opt, step_size=args.learning_rate_step, gamma=args.learning_rate_gamma)
 
@@ -233,29 +287,30 @@ def _loss(args, p, n, mdl, loss_f):
 
 
 def train(args, e, mdl, opt, ls_f, tr, tb_sw):
-    if hvd.rank() == 0:
+    if is_master(args):
         tr_ls = 0
         t = tqdm(total=len(tr), desc=f'Epoch {e}/{args.epochs}')
-
-    _dvc = 'cpu' if args.cpu_gpu else args.dvc
 
     mdl.train()
     tr.sampler.set_epoch(e)
     for i, (p, n) in enumerate(tr, 1):
-        p = p.view(-1, p.shape[-1]).to(_dvc)
-        n = n.view(-1, n.shape[-1]).to(_dvc)
+        p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
+        n = n.view(-1, n.shape[-1]).to(args.aux_dvc)
 
         ls = _loss(args, p, n, mdl, ls_f)
         ls.backward()
-        opt.step()
+        if args.tpu:
+            xm.optimizer_step(opt)
+        else:
+            opt.step()
 
-        if hvd.rank() == 0:
+        if is_master(args):
             tr_ls += ls.item()
             tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
             t.set_postfix(loss=f'{tr_ls / i:.4f}')
             t.update()
 
-    if hvd.rank() == 0:
+    if is_master(args):
         t.close()
         tr_ls /= len(tr)
         tb_sw.add_scalar(f'loss/train', tr_ls, e)
@@ -271,7 +326,7 @@ def _evaluate_de(mdl, d, h):
                       mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), dim=1)
 
 
-def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
+def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr):
     dsc = not args.model.endswith('TransE')
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
@@ -281,14 +336,14 @@ def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
         x_embed = mdl.e_embed(x).to(args.dvc)
         y_embed = mdl.e_embed.weight
     if args.model.endswith('DistMult'):
-        xrt = (x_embed * rt_embed).to(_dvc)
+        xrt = (x_embed * rt_embed).to(args.aux_dvc)
         if args.model.startswith('DE'):
             y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h).t())
                              for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
             y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=dsc).cpu().numpy()
     elif args.model.endswith('TransE'):
-        xrt = (x_embed + (1 if md == 'H' else -1) * rt_embed).to(_dvc)
+        xrt = (x_embed + (1 if md == 'H' else -1) * rt_embed).to(args.aux_dvc)
         if args.model.startswith('DE'):
             y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h), p=_p(args))
                              for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
@@ -307,13 +362,11 @@ def evaluate(args, b, mdl, mtr):
     else:
         rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
 
-    _dvc = 'cpu' if args.cpu_gpu else args.dvc
-
     if args.mode != 'tail':
-        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, 'H', mtr, _dvc)
+        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, 'H', mtr)
 
     if args.mode != 'head':
-        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, 'T', mtr, _dvc)
+        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, 'T', mtr)
 
 
 def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
@@ -334,24 +387,23 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
     vd_ls = 0
     mtr = Metric()
 
-    _dvc = 'cpu' if args.cpu_gpu else args.dvc
-
     mdl.eval()
     with torch.no_grad():
         for p, n, b in vd:
-            p = p.view(-1, p.shape[-1]).to(_dvc)
-            n = n.view(-1, n.shape[-1]).to(_dvc)
-            b = b.view(-1, b.shape[-1]).to(_dvc)
+            p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
+            n = n.view(-1, n.shape[-1]).to(args.aux_dvc)
+            b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
             vd_ls += ls.item()
 
             evaluate(args, b, mdl, mtr)
     vd_ls /= len(vd)
-    vd_ls_avg = _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average)
-    mtr.allreduce()
+    vd_ls_avg = _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average) if not args.tpu else vd_ls
+    if not args.tpu:
+        mtr.allreduce()
 
-    if hvd.rank() == 0:
+    if is_master(args):
         print(f'Epoch {e}/{args.epochs} validation loss: {vd_ls_avg}')
         print(mtr)
         tb_sw.add_scalar(f'loss/validation', vd_ls_avg, e)
@@ -364,16 +416,16 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
 def test(args, mdl, ts, tb_sw):
     mtr = Metric()
 
-    _dvc = 'cpu' if args.cpu_gpu else args.dvc
-
     mdl.eval()
     with torch.no_grad():
         for b in ts:
-            b = b.view(-1, b.shape[-1]).to(_dvc)
+            b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
 
             evaluate(args, b, mdl, mtr)
-    mtr.allreduce()
+    if not args.tpu:
+        mtr.allreduce()
 
-    if hvd.rank() == 0:
+    if is_master(args):
         print(mtr)
+        del args.dvc, args.aux_dvc  # NOTE: Unsupported type!
         tb_sw.add_hparams(vars(args), dict(mtr))
