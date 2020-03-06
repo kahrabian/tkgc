@@ -92,7 +92,7 @@ def _args():
     argparser.add_argument('-mr', '--margin', type=int, default=1)
     argparser.add_argument('-lr', '--learning-rate', type=float, default=0.001)
     argparser.add_argument('-ls', '--learning-rate-step', type=int, default=1)
-    argparser.add_argument('-lg', '--learning-rate-gamma', type=int, default=1)
+    argparser.add_argument('-lg', '--learning-rate-gamma', type=float, default=1)
     argparser.add_argument('-wd', '--weight-decay', type=float, default=0)
     argparser.add_argument('-e', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
