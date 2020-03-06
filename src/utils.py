@@ -91,6 +91,8 @@ def _args():
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
     argparser.add_argument('-mr', '--margin', type=int, default=1)
     argparser.add_argument('-lr', '--learning-rate', type=float, default=0.001)
+    argparser.add_argument('-ls', '--learning-rate-step', type=int, default=1)
+    argparser.add_argument('-lg', '--learning-rate-gamma', type=int, default=1)
     argparser.add_argument('-wd', '--weight-decay', type=float, default=0)
     argparser.add_argument('-e', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
@@ -203,9 +205,11 @@ def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
     hvd.broadcast_parameters(mdl.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(opt, root_rank=0)
 
+    lr_sc = torch.optim.lr_scheduler.StepLR(opt, step_size=args.learning_rate_step, gamma=args.learning_rate_gamma)
+
     ls_f = _loss_f(args).to(args.dvc)
 
-    return mdl, opt, ls_f, st_e, bst_ls
+    return mdl, opt, lr_sc, ls_f, st_e, bst_ls
 
 
 def _loss(args, p, n, mdl, loss_f):
