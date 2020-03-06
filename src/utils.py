@@ -218,9 +218,10 @@ def _loss(args, p, n, mdl, loss_f):
     s_n = mdl(n_s, n_o, n_r, n_t)
 
     if args.model == 'TTransE':
-        loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape + s_n.shape).to(args.dvc))
+        loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape[0]).to(args.dvc))
     else:
-        x = torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
+        x_sc = -1 if args.model.endswith('TransE') else 1
+        x = x_sc * torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
 
@@ -267,6 +268,7 @@ def _evaluate_de(mdl, d, h):
 
 
 def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
+    dsc = not args.model.endswith('TransE')
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
         t_x = mdl._t_embed(x, t[:, 0], t[:, 1])
@@ -278,16 +280,16 @@ def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr, _dvc):
         xrt = (x_embed * rt_embed).to(_dvc)
         if args.model.startswith('DE'):
             y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h).t())
-                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=True).cpu().numpy()
+                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
-            y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=True).cpu().numpy()
+            y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=dsc).cpu().numpy()
     elif args.model.endswith('TransE'):
         xrt = (x_embed + (1 if md == 'H' else -1) * rt_embed).to(_dvc)
         if args.model.startswith('DE'):
             y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h), p=_p(args))
-                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=True).cpu().numpy()
+                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
-            y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=True).cpu().numpy()
+            y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=dsc).cpu().numpy()
     for i, y_i in enumerate(y.cpu().numpy()):
         mtr.update(np.argwhere(y_r[i] == y_i)[0, 0] + 1)
 
