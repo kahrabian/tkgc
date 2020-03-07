@@ -289,7 +289,7 @@ def _loss(args, p, n, mdl, loss_f):
 def train(args, e, mdl, opt, ls_f, tr, tb_sw):
     if is_master(args):
         tr_ls = 0
-        t = tqdm(total=len(tr), desc=f'Epoch {e}/{args.epochs}')
+        t = tqdm(total=len(tr if not args.tpu else tr._loader), desc=f'Epoch {e}/{args.epochs}')
 
     mdl.train()
     tr.sampler.set_epoch(e)
@@ -312,7 +312,7 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
 
     if is_master(args):
         t.close()
-        tr_ls /= len(tr)
+        tr_ls /= len(tr if not args.tpu else tr._loader)
         tb_sw.add_scalar(f'loss/train', tr_ls, e)
 
 
@@ -398,7 +398,7 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
             vd_ls += ls.item()
 
             evaluate(args, b, mdl, mtr)
-    vd_ls /= len(vd)
+    vd_ls /= len(vd if not args.tpu else vd._loader)
     vd_ls_avg = _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average) if not args.tpu else vd_ls
     if not args.tpu:
         mtr.allreduce()
