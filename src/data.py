@@ -22,18 +22,18 @@ class Dataset(tDataset):
             ft = [f'{d}{h}', ]
         return ft
 
-    def transform(self, idx, ts=True, ts_bs=None):
-        self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [idx[y] for y in x[3:]], 2, self._d)
+    def transform(self, ix, ts=True, ts_bs=None):
+        self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [ix[y] for y in x[3:]], 2, self._d)
         self._ts = {**ts_bs, **{tuple(x): True for x in self._d[0, :, :3]}} if ts else {}
 
     def __array__(self):
         return self._d
 
-    def __init__(self, args, fn, e_idx_ln, md):
+    def __init__(self, args, fn, e_ix_ln, md):
         super().__init__()
 
         self._args = args
-        self._e_idx_ln = e_idx_ln
+        self._e_ix_ln = e_ix_ln
         self._md = md
 
         self._load(fn)
@@ -50,9 +50,9 @@ class Dataset(tDataset):
         for i, p_i in enumerate(p):
             p_i = p_i.copy()
             ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
-            s = np.random.randint(0, self._e_idx_ln)
+            s = np.random.randint(0, self._e_ix_ln)
             while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
-                s = np.random.randint(0, self._e_idx_ln)
+                s = np.random.randint(0, self._e_ix_ln)
             p[i][ix] = s
 
     def _prepare(self, x):

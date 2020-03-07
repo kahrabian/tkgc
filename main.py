@@ -1,16 +1,21 @@
 import horovod.torch as hvd
+import os
+try:
+    import torch_xla.distributed.xla_multiprocessing as xmp
+except ImportError:
+    pass
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils as utils
 
 
-def main():
+def main(ix):
     args = utils.initialize()
-    tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.data(args)
-    mdl, opt, lr_sc, ls_f, st_e, bst_ls = utils.prepare(args, e_idx_ln, r_idx_ln, t_idx_ln)
-    tb_sw = SummaryWriter() if hvd.rank() == 0 else None
+    tr, vd, ts, e_ix_ln, r_ix_ln, t_ix_ln = utils.data(args)
+    mdl, opt, lr_sc, ls_f, st_e, bst_ls = utils.prepare(args, e_ix_ln, r_ix_ln, t_ix_ln)
+    tb_sw = SummaryWriter() if utils.is_master(args) else None
     if not args.test:
-        ls_mtr = utils.BestMetric() if hvd.rank() == 0 else None
+        ls_mtr = utils.BestMetric() if utils.is_master(args) else None
         for e in range(st_e, args.epochs + 1):
             utils.train(args, e, mdl, opt, ls_f, tr, tb_sw)
             if e % args.log_frequency == 0 or e == args.epochs:
@@ -18,9 +23,13 @@ def main():
             lr_sc.step()
     else:
         utils.test(args, mdl, ts, tb_sw)
-    if hvd.rank() == 0:
+    if utils.is_master(args):
         tb_sw.close()
 
 
 if __name__ == '__main__':
-    main()
+    nproc = os.getenv('NPROC', None)
+    if nproc is not None:
+        xmp.spawn(main, nprocs=int(nproc))
+    else:
+        main(0)
