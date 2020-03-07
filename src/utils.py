@@ -341,14 +341,14 @@ def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr):
     if args.model.endswith('DistMult'):
         xrt = (x_embed * rt_embed).to(args.aux_dvc)
         if args.model.startswith('DE'):
-            y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h).t())
+            y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d.float(), h.float()).t())
                              for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
             y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=dsc).cpu().numpy()
     elif args.model.endswith('TransE'):
         xrt = (x_embed + (1 if md == 'H' else -1) * rt_embed).to(args.aux_dvc)
         if args.model.startswith('DE'):
-            y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d, h), p=_p(args))
+            y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d.float(), h.float()), p=_p(args))
                              for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
             y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=dsc).cpu().numpy()
