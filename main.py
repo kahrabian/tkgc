@@ -1,4 +1,9 @@
 import horovod.torch as hvd
+import os
+try:
+    import torch_xla.distributed.xla_multiprocessing as xmp
+except ImportError:
+    pass
 from torch.utils.tensorboard import SummaryWriter
 
 import src.utils as utils
@@ -23,4 +28,8 @@ def main(ix):
 
 
 if __name__ == '__main__':
-    main(0)
+    nproc = os.getenv('NPROC', None)
+    if nproc is not None:
+        xmp.spawn(main, nprocs=int(nproc))
+    else:
+        main(0)
