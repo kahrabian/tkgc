@@ -169,24 +169,24 @@ def data(args):
     bpath = os.path.join('./data', args.dataset)
 
     with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
-        e_idx_ln = int(f.readline().strip())
+        e_ix_ln = int(f.readline().strip())
     with open(os.path.join(bpath, 'relation2id.txt'), 'r') as f:
-        r_idx_ln = int(f.readline().strip())
+        r_ix_ln = int(f.readline().strip())
 
-    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_idx_ln, 1)
-    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_idx_ln, 2)
-    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_idx_ln, 3)
+    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_ix_ln, 1)
+    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_ix_ln, 2)
+    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_ix_ln, 3)
 
     if args.model.startswith('DE'):
-        t_idx = FakeTimeIndex()
+        t_ix = FakeTimeIndex()
     else:
         al_t = np.concatenate([tr_ds, vd_ds, ts_ds], axis=1)[0, :, 3:].flatten()
-        t_idx = {e: i for i, e in enumerate(np.unique(al_t))}
-    t_idx_ln = len(t_idx)
+        t_ix = {e: i for i, e in enumerate(np.unique(al_t))}
+    t_ix_ln = len(t_ix)
 
-    tr_ds.transform(t_idx, ts_bs={})
-    vd_ds.transform(t_idx, ts_bs=tr_ds._ts)
-    ts_ds.transform(t_idx, ts=False)
+    tr_ds.transform(t_ix, ts_bs={})
+    vd_ds.transform(t_ix, ts_bs=tr_ds._ts)
+    ts_ds.transform(t_ix, ts=False)
 
     tr_smp = DistributedSampler(tr_ds, num_replicas=size(args), rank=rank(args))
     vd_smp = DistributedSampler(vd_ds, num_replicas=size(args), rank=rank(args), shuffle=False)
@@ -215,7 +215,7 @@ def data(args):
     vd = pl.ParallelLoader(vd_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else vd_dl
     ts = pl.ParallelLoader(ts_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else ts_dl
 
-    return tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln
+    return tr, vd, ts, e_ix_ln, r_ix_ln, t_ix_ln
 
 
 def _model(args, e_cnt, r_cnt, t_cnt):
@@ -242,8 +242,8 @@ def _loss_f(args):
     return nn.MarginRankingLoss(args.margin) if args.model == 'TTransE' else nn.CrossEntropyLoss()
 
 
-def prepare(args, e_idx_ln, r_idx_ln, t_idx_ln):
-    mdl = _model(args, e_idx_ln, r_idx_ln, t_idx_ln)
+def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
+    mdl = _model(args, e_ix_ln, r_ix_ln, t_ix_ln)
 
     lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if not args.tpu and args.adasum else size(args)
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate * lr_sc, weight_decay=args.weight_decay)

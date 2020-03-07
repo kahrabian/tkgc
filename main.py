@@ -4,10 +4,10 @@ from torch.utils.tensorboard import SummaryWriter
 import src.utils as utils
 
 
-def main():
+def main(ix):
     args = utils.initialize()
-    tr, vd, ts, e_idx_ln, r_idx_ln, t_idx_ln = utils.data(args)
-    mdl, opt, lr_sc, ls_f, st_e, bst_ls = utils.prepare(args, e_idx_ln, r_idx_ln, t_idx_ln)
+    tr, vd, ts, e_ix_ln, r_ix_ln, t_ix_ln = utils.data(args)
+    mdl, opt, lr_sc, ls_f, st_e, bst_ls = utils.prepare(args, e_ix_ln, r_ix_ln, t_ix_ln)
     tb_sw = SummaryWriter() if utils.is_master(args) else None
     if not args.test:
         ls_mtr = utils.BestMetric() if utils.is_master(args) else None
@@ -23,4 +23,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(0)
