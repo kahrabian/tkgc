@@ -20,8 +20,8 @@ Run the following script to install the necessary requirements for using TPUs.
 
 ```bash
 VERSION = "xrt==1.15.0"
-!curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py
-!python pytorch-xla-env-setup.py --version $VERSION
+curl https://raw.githubusercontent.com/pytorch/xla/master/contrib/scripts/env-setup.py -o pytorch-xla-env-setup.py
+python pytorch-xla-env-setup.py --version $VERSION
 ```
 
 ## Usage

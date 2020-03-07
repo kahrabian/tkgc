@@ -211,11 +211,7 @@ def data(args):
                        pin_memory=not args.tpu,
                        drop_last=args.tpu)
 
-    tr = pl.ParallelLoader(tr_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else tr_dl
-    vd = pl.ParallelLoader(vd_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else vd_dl
-    ts = pl.ParallelLoader(ts_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else ts_dl
-
-    return tr, vd, ts, e_ix_ln, r_ix_ln, t_ix_ln
+    return tr_dl, vd_dl, ts_dl, e_ix_ln, r_ix_ln, t_ix_ln
 
 
 def _model(args, e_cnt, r_cnt, t_cnt):
@@ -286,15 +282,15 @@ def _loss(args, p, n, mdl, loss_f):
     return loss
 
 
-def train(args, e, mdl, opt, ls_f, tr, tb_sw):
+def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
     if is_master(args):
         tr_ls = 0
-        t = tqdm(total=len(tr._loader._loader if args.tpu else tr), desc=f'Epoch {e}/{args.epochs}')
+        t = tqdm(total=len(tr_dl), desc=f'Epoch {e}/{args.epochs}')
+
+    tr = pl.ParallelLoader(tr_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else tr_dl
 
     mdl.train()
-    if args.tpu:
-        tr._loader._loader.sampler.set_epoch(e)
-    else:
+    if not args.tpu:
         tr.sampler.set_epoch(e)
     for i, (p, n) in enumerate(tr, 1):
         p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
@@ -315,7 +311,7 @@ def train(args, e, mdl, opt, ls_f, tr, tb_sw):
 
     if is_master(args):
         t.close()
-        tr_ls /= len(tr._loader._loader if args.tpu else tr)
+        tr_ls /= len(tr_dl)
         tb_sw.add_scalar(f'loss/train', tr_ls, e)
 
 
@@ -386,9 +382,11 @@ def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
         shutil.copyfile(os.path.join(bpth, f'e_{e}-' + fn), os.path.join(bpth, f'bst-' + fn))
 
 
-def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
+def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
     vd_ls = 0
     mtr = Metric()
+
+    vd = pl.ParallelLoader(vd_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else vd_dl
 
     mdl.eval()
     with torch.no_grad():
@@ -401,7 +399,7 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
             vd_ls += ls.item()
 
             evaluate(args, b, mdl, mtr)
-    vd_ls /= len(vd._loader._loader if args.tpu else vd)
+    vd_ls /= len(vd_dl)
     vd_ls_avg = vd_ls if args.tpu else _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average)
     if not args.tpu:
         mtr.allreduce()
@@ -416,8 +414,10 @@ def validate(args, e, mdl, opt, ls_f, vd, ls_mtr, tb_sw):
         _checkpoint(args, e, mdl, opt, bst_ls, is_bst)
 
 
-def test(args, mdl, ts, tb_sw):
+def test(args, mdl, ts_dl, tb_sw):
     mtr = Metric()
+
+    ts = pl.ParallelLoader(ts_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else ts_dl
 
     mdl.eval()
     with torch.no_grad():
