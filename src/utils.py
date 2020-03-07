@@ -10,6 +10,7 @@ try:
     import torch_xla.distributed.parallel_loader as pl
 except ImportError:
     pass
+from dataclasses import dataclass
 from torch.backends import cudnn
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -83,6 +84,11 @@ class BestMetric(object):
 class FakeTimeIndex(object):
     def __len__(self): return 0
     def __getitem__(self, ix): return int(ix)
+
+
+@dataclass
+class Integer(object):
+    val: int = 0
 
 
 def _args():
@@ -229,7 +235,7 @@ def _resume(args, mdl, opt):
     if not os.path.exists(args.resume):
         raise FileNotFoundError('can\'t find the saved model with the given path')
     ckpt = torch.load(args.resume, map_location=args.dvc)
-    if is_master(args):
+    if is_master(args) or args.tpu:
         mdl.load_state_dict(ckpt['mdl'])
         opt.load_state_dict(ckpt['opt'])
     return ckpt['e'], ckpt['bst_ls']
@@ -283,9 +289,18 @@ def _loss(args, p, n, mdl, loss_f):
     return loss
 
 
+def _train(args, i, tr_ls, ls, tb_sw, e, t):
+    n = ((i - 1) % args.log_frequency) + 1
+    ls_vl = ls.item()
+    tr_ls.val += ls_vl * n
+    tb_sw.add_scalars(f'epoch/{e}', {'loss': ls_vl, 'mean_loss': tr_ls.val / i}, i)
+    t.set_postfix(loss=f'{tr_ls.val / i:.4f}')
+    t.update(n)
+
+
 def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
     if is_master(args):
-        tr_ls = 0
+        tr_ls = Integer(0)
         t = tqdm(total=len(tr_dl), desc=f'Epoch {e}/{args.epochs}')
 
     tr = pl.ParallelLoader(tr_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else tr_dl
@@ -304,11 +319,11 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
         else:
             opt.step()
 
-        if is_master(args):
-            tr_ls += ls.item()
-            tb_sw.add_scalars(f'epoch/{e}', {'loss': ls.item(), 'mean_loss': tr_ls / i}, i)
-            t.set_postfix(loss=f'{tr_ls / i:.4f}')
-            t.update()
+        if is_master(args) and (i % args.log_frequency == 0 or i == len(tr_dl)):
+            if args.tpu:
+                xm.add_step_closure(_train, args=(args, i, tr_ls, ls, tb_sw, e, t))
+            else:
+                _train(args, i, tr_ls, ls, tb_sw, e, t)
 
     if is_master(args):
         t.close()
@@ -383,8 +398,12 @@ def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
         shutil.copyfile(os.path.join(bpth, f'e_{e}-' + fn), os.path.join(bpth, f'bst-' + fn))
 
 
+def _validate(vd_ls, ls):
+    vd_ls.val += ls
+
+
 def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
-    vd_ls = 0
+    vd_ls = Integer(0)
     mtr = Metric()
 
     vd = pl.ParallelLoader(vd_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else vd_dl
@@ -397,7 +416,10 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
             b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
-            vd_ls += ls.item()
+            if args.tpu:
+                xm.add_step_closure(_validate, args=(vd_ls, ls))
+            else:
+                _validate(vd_ls, ls)
 
             evaluate(args, b, mdl, mtr)
     vd_ls /= len(vd_dl)
