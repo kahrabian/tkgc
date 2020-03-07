@@ -100,7 +100,7 @@ class AbstractDE(torch.nn.Module):
         return _d + _h
 
     def forward(self, s, o, r, t):
-        d, h = t[:, 0], t[:, 1]
+        d, h = t[:, 0].float(), t[:, 1].float()
         s_e = self.e_embed(s).to(self.dvc)
         o_e = self.e_embed(o).to(self.dvc)
         r_e = self.r_embed(r)
