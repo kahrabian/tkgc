@@ -10,7 +10,6 @@ try:
     import torch_xla.distributed.parallel_loader as pl
 except ImportError:
     pass
-from dataclasses import dataclass
 from torch.backends import cudnn
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -86,9 +85,9 @@ class FakeTimeIndex(object):
     def __getitem__(self, ix): return int(ix)
 
 
-@dataclass
 class Integer(object):
-    val: int = 0
+    def __init__(self, val):
+        self.val = val
 
 
 def _args():
@@ -327,8 +326,8 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
 
     if is_master(args):
         t.close()
-        tr_ls /= len(tr_dl)
-        tb_sw.add_scalar(f'loss/train', tr_ls, e)
+        tr_ls.val /= len(tr_dl)
+        tb_sw.add_scalar(f'loss/train', tr_ls.val, e)
 
 
 def _p(args):
@@ -422,8 +421,9 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
                 _validate(vd_ls, ls)
 
             evaluate(args, b, mdl, mtr)
-    vd_ls /= len(vd_dl)
-    vd_ls_avg = vd_ls if args.tpu else _allreduce(vd_ls, 'validate.vd_ls_avg', hvd.Average)
+
+    vd_ls.val /= len(vd_dl)
+    vd_ls_avg = vd_ls.val if args.tpu else _allreduce(vd_ls.val, 'validate.vd_ls_avg', hvd.Average)
     if not args.tpu:
         mtr.allreduce()
 
@@ -446,8 +446,8 @@ def test(args, mdl, ts_dl, tb_sw):
     with torch.no_grad():
         for b in ts:
             b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
-
             evaluate(args, b, mdl, mtr)
+
     if not args.tpu:
         mtr.allreduce()
 
