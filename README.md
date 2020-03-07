@@ -40,7 +40,7 @@ horovodrun -np 2 -H localhost:2 python -BW ignore main.py \
            --negative-samples 64 \
            --filter \
            --mode head \
-           --log-frequency 2 \
+           --validation-frequency 2 \
            --threads 2 \
            --workers 1
 ```
@@ -58,13 +58,13 @@ NPROC=1 python -BW ignore main.py --dataset GitGraph_0.01 \
                                   --negative-samples 64 \
                                   --filter \
                                   --mode head \
-                                  --log-frequency 10 \
+                                  --validation-frequency 10 \
                                   --tpu \
                                   --threads 4 \
                                   --workers 1
 ```
 
-You can sue `--aux_cpu` switch to enable mixed CPU training.
+You can use the `--aux_cpu` switch to enable mixed CPU training.
 
 To see the list of all available options use the following command:
 

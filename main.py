@@ -18,7 +18,7 @@ def main(ix):
         ls_mtr = utils.BestMetric() if utils.is_master(args) else None
         for e in range(st_e, args.epochs + 1):
             utils.train(args, e, mdl, opt, ls_f, tr_dl, tb_sw)
-            if e % args.log_frequency == 0 or e == args.epochs:
+            if e % args.validation_frequency == 0 or e == args.epochs:
                 utils.validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw)
             lr_sc.step()
     else:
