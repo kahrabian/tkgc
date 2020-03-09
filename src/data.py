@@ -44,7 +44,7 @@ class Dataset(tDataset):
 
     def _check(self, p_i, ix, s):
         p_i[ix] = s
-        return self._ts.get(tuple(p_i), False)
+        return self._ts.get(tuple(p_i[:3]), False)
 
     def _corrupt(self, p):
         for i, p_i in enumerate(p):
