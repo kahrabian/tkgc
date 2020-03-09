@@ -117,7 +117,7 @@ def _args():
     argparser.add_argument('-vf', '--validation-frequency', type=int, default=100)
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
     argparser.add_argument('-tp', '--tpu', default=False, action='store_true')
-    argparser.add_argument('-ac', '--aux_cpu', default=False, action='store_true')
+    argparser.add_argument('-ac', '--aux-cpu', default=False, action='store_true')
     argparser.add_argument('-th', '--threads', type=int, default=1)
     argparser.add_argument('-wo', '--workers', type=int, default=1)
 
@@ -126,7 +126,7 @@ def _args():
     return args
 
 
-def rank(args):
+def _rank(args):
     if args.tpu:
         return xm.get_ordinal()
     return hvd.rank()
@@ -139,7 +139,7 @@ def initialize():
         hvd.init()
 
     if args.deterministic:
-        torch.manual_seed(rank(args))  # NOTE: Reproducability
+        torch.manual_seed(_rank(args))  # NOTE: Reproducability
 
     torch.set_num_threads(args.threads)
 
@@ -165,7 +165,7 @@ def initialize():
     return args
 
 
-def size(args):
+def _size(args):
     if args.tpu:
         return xm.xrt_world_size()
     return hvd.size()
@@ -194,9 +194,9 @@ def data(args):
     vd_ds.transform(t_ix, ts_bs=tr_ds._ts)
     ts_ds.transform(t_ix, ts=False)
 
-    tr_smp = DistributedSampler(tr_ds, num_replicas=size(args), rank=rank(args))
-    vd_smp = DistributedSampler(vd_ds, num_replicas=size(args), rank=rank(args), shuffle=False)
-    ts_smp = DistributedSampler(ts_ds, num_replicas=size(args), rank=rank(args), shuffle=False)
+    tr_smp = DistributedSampler(tr_ds, num_replicas=_size(args), rank=_rank(args))
+    vd_smp = DistributedSampler(vd_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
+    ts_smp = DistributedSampler(ts_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
 
     tr_dl = DataLoader(tr_ds,
                        batch_size=args.batch_size,
@@ -227,7 +227,7 @@ def _model(args, e_cnt, r_cnt, t_cnt):
 
 
 def is_master(args):
-    return rank(args) == 0
+    return _rank(args) == 0
 
 
 def _resume(args, mdl, opt):
@@ -247,7 +247,7 @@ def _loss_f(args):
 def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
     mdl = _model(args, e_ix_ln, r_ix_ln, t_ix_ln)
 
-    lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if not args.tpu and args.adasum else size(args)
+    lr_sc = (hvd.local_size() if hvd.nccl_built() else 1) if not args.tpu and args.adasum else _size(args)
     opt = torch.optim.Adam(mdl.parameters(), lr=args.learning_rate * lr_sc, weight_decay=args.weight_decay)
 
     st_e, bst_ls = _resume(args, mdl, opt) if args.resume != '' else (1, None)

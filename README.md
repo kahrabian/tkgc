@@ -64,7 +64,7 @@ NPROC=1 python -BW ignore main.py --dataset GitGraph_0.01 \
                                   --workers 1
 ```
 
-You can use the `--aux_cpu` switch to enable mixed CPU training.
+You can use the `--aux-cpu` switch to enable mixed CPU training.
 
 To see the list of all available options use the following command:
 

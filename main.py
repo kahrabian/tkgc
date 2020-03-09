@@ -1,4 +1,3 @@
-import horovod.torch as hvd
 import os
 try:
     import torch_xla.distributed.xla_multiprocessing as xmp
