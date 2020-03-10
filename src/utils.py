@@ -20,9 +20,6 @@ import src.models as models
 from src.data import Dataset
 
 
-tp_ix, tp_rix = None, None
-
-
 def _allreduce(val, name, op):
     return hvd.allreduce(torch.tensor(val), name=name, op=op).item()
 
@@ -111,7 +108,7 @@ def _args():
     argparser.add_argument('-ep', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
     argparser.add_argument('-ns', '--negative-samples', type=int, default=1)
-    argparser.add_argument('-st', '--sampling-technique', type=str, default=1, choices=['random', 'type'])
+    argparser.add_argument('-st', '--sampling-technique', type=str, default='random', choices=['random', 'type'])
     argparser.add_argument('-fl', '--filter', default=True, action='store_true')
     argparser.add_argument('-rs', '--resume', type=str, default='')
     argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
@@ -177,7 +174,6 @@ def _size(args):
 
 
 def data(args):
-    global tp_ix, tp_rix
     bpath = os.path.join('./data', args.dataset)
 
     with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
@@ -235,7 +231,7 @@ def data(args):
                        pin_memory=not args.tpu,
                        drop_last=args.tpu)
 
-    return tr_dl, vd_dl, ts_dl, e_ix_ln, r_ix_ln, t_ix_ln
+    return tr_dl, vd_dl, ts_dl, e_ix_ln, r_ix_ln, t_ix_ln, tp_ix, tp_rix
 
 
 def _model(args, e_cnt, r_cnt, t_cnt):
@@ -311,7 +307,7 @@ def _train(args, i, tr_ls, ls, tb_sw, e, t):
     ls_vl = ls.item()
     tr_ls.val += ls_vl * n
     tb_sw.add_scalars(f'epoch/{e}', {'loss': ls_vl, 'mean_loss': tr_ls.val / i}, i)
-    t.set_postfix(loss=f'{tr_ls.val / i:.4f}')
+    t.set_postfix(loss=f'{tr_ls.val / i:.6f}')
     t.update(n)
 
 
@@ -358,7 +354,7 @@ def _evaluate_de(mdl, d, h):
                       mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), dim=1)
 
 
-def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr):
+def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
     dsc = not args.model.endswith('TransE')
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
@@ -388,7 +384,7 @@ def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr):
         mtr.update(r)
 
 
-def evaluate(args, b, mdl, mtr):
+def evaluate(args, b, mdl, tp_ix, tp_rix, mtr):
     ts_r, ts_t = b[:, 2].to(args.dvc), b[:, 3:].squeeze().to(args.dvc)
     if args.model.startswith('DE'):
         rt_embed = mdl.r_embed(ts_r)
@@ -398,10 +394,10 @@ def evaluate(args, b, mdl, mtr):
         rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
 
     if args.mode != 'tail':
-        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, 'H', mtr)
+        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, tp_ix, tp_rix, 'H', mtr)
 
     if args.mode != 'head':
-        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, 'T', mtr)
+        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, tp_ix, tp_rix, 'T', mtr)
 
 
 def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
@@ -422,7 +418,7 @@ def _validate(vd_ls, ls):
     vd_ls.val += ls
 
 
-def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
+def validate(args, e, mdl, opt, ls_f, vd_dl, tp_ix, tp_rix, ls_mtr, tb_sw):
     vd_ls = Integer(0)
     mtr = Metric()
 
@@ -441,7 +437,7 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
             else:
                 _validate(vd_ls, ls)
 
-            evaluate(args, b, mdl, mtr)
+            evaluate(args, b, mdl, tp_ix, tp_rix, mtr)
 
     vd_ls.val /= len(vd_dl)
     vd_ls_avg = vd_ls.val if args.tpu else _allreduce(vd_ls.val, 'validate.vd_ls_avg', hvd.Average)
@@ -458,7 +454,7 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, ls_mtr, tb_sw):
         _checkpoint(args, e, mdl, opt, bst_ls, is_bst)
 
 
-def test(args, mdl, ts_dl, tb_sw):
+def test(args, mdl, ts_dl, tp_ix, tp_rix, tb_sw):
     mtr = Metric()
 
     ts = pl.ParallelLoader(ts_dl, [args.dvc, ]).per_device_loader(args.dvc) if args.tpu else ts_dl
@@ -467,7 +463,7 @@ def test(args, mdl, ts_dl, tb_sw):
     with torch.no_grad():
         for b in ts:
             b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
-            evaluate(args, b, mdl, mtr)
+            evaluate(args, b, mdl, tp_ix, tp_rix, mtr)
 
     if not args.tpu:
         mtr.allreduce()

@@ -21,7 +21,6 @@ class AbstractTA(nn.Module, AbstractDropout):
         super().__init__()
 
         self.dvc = args.dvc
-        self.aux_dvc = args.aux_dvc
         self.dropout = args.dropout
         self.l1 = args.l1
 
@@ -34,7 +33,7 @@ class AbstractTA(nn.Module, AbstractDropout):
             elif 'bias' in name:
                 nn.init.zeros_(param)
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
         self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
@@ -68,27 +67,26 @@ class AbstractDE(torch.nn.Module):
         super().__init__()
 
         self.dvc = args.dvc
-        self.aux_dvc = args.aux_dvc
         self.dropout = args.dropout
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size * 2).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
 
-        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
-        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_frq_embed.weight)
         nn.init.xavier_uniform_(self.h_frq_embed.weight)
 
-        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
-        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_phi_embed.weight)
         nn.init.xavier_uniform_(self.h_phi_embed.weight)
 
-        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
-        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_amp_embed.weight)
         nn.init.xavier_uniform_(self.h_amp_embed.weight)
 
@@ -119,10 +117,9 @@ class TTransE(nn.Module, AbstractNorm):
         super().__init__()
 
         self.dvc = args.dvc
-        self.aux_dvc = args.aux_dvc
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(self.aux_dvc)
+        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
         self.r_embed = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
         self.t_embed = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
