@@ -29,11 +29,13 @@ class Dataset(tDataset):
     def __array__(self):
         return self._d
 
-    def __init__(self, args, fn, e_ix_ln, md):
+    def __init__(self, args, fn, e_ix_ln, tp_ix, tp_rix, md):
         super().__init__()
 
         self._args = args
         self._e_ix_ln = e_ix_ln
+        self._tp_ix = tp_ix
+        self._tp_rix = tp_rix
         self._md = md
 
         self._load(fn)
@@ -55,10 +57,28 @@ class Dataset(tDataset):
                 s = np.random.randint(0, self._e_ix_ln)
             p[i][ix] = s
 
+    def _corrupt_type(self, p):
+        for i, p_i in enumerate(p):
+            p_i = p_i.copy()
+            ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
+            ss = self._tp_ix[self._tp_rix[p[i][ix]]]
+            for _ in range(len(ss)):  # NOTE: Heuristic to make the sampling efficient.
+                s = np.random.choice(ss, 1)[0]
+                if s != p[i][ix] and (not self._args.filter or not self._check(p_i, ix, s)):
+                    break
+            else:  # NOTE: Fallback!
+                s = np.random.randint(0, self._e_ix_ln)
+                while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
+                    s = np.random.randint(0, self._e_ix_ln)
+            p[i][ix] = s
+
     def _prepare(self, x):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
         n = np.repeat(x, self._args.negative_samples, axis=0)
-        self._corrupt(n)
+        if self._args.sampling_technique == 'random':
+            self._corrupt(n)
+        elif self._args.sampling_technique == 'type':
+            self._corrupt_type(n)
         return p, n
 
     def __getitem__(self, i):

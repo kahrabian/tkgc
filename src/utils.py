@@ -2,6 +2,7 @@ import argparse
 import horovod.torch as hvd
 import numpy as np
 import os
+import re
 import shutil
 import torch
 import torch.nn as nn
@@ -17,6 +18,9 @@ from tqdm import tqdm
 
 import src.models as models
 from src.data import Dataset
+
+
+tp_ix, tp_rix = None, None
 
 
 def _allreduce(val, name, op):
@@ -107,6 +111,7 @@ def _args():
     argparser.add_argument('-ep', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
     argparser.add_argument('-ns', '--negative-samples', type=int, default=1)
+    argparser.add_argument('-st', '--sampling-technique', type=str, default=1, choices=['random', 'type'])
     argparser.add_argument('-fl', '--filter', default=True, action='store_true')
     argparser.add_argument('-rs', '--resume', type=str, default='')
     argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
@@ -172,16 +177,29 @@ def _size(args):
 
 
 def data(args):
+    global tp_ix, tp_rix
     bpath = os.path.join('./data', args.dataset)
+
+    with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
+        e_ix = dict(map(lambda x: x.split()[::-1], f.read().split('\n')[1:-1]))
+
+    tp_ix, tp_rix = dict(), dict()
+    tp_rx = re.compile(r'^/(\w+)/.*$')
+    for i, e in e_ix.items():
+        tp = re.findall(tp_rx, e)[0]
+        if tp not in tp_ix:
+            tp_ix[tp] = list()
+        tp_ix[tp].append(int(i))
+        tp_rix[int(i)] = tp
 
     with open(os.path.join(bpath, 'entity2id.txt'), 'r') as f:
         e_ix_ln = int(f.readline().strip())
     with open(os.path.join(bpath, 'relation2id.txt'), 'r') as f:
         r_ix_ln = int(f.readline().strip())
 
-    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_ix_ln, 1)
-    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_ix_ln, 2)
-    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_ix_ln, 3)
+    tr_ds = Dataset(args, os.path.join(bpath, 'train2id.txt'), e_ix_ln, tp_ix, tp_rix, 1)
+    vd_ds = Dataset(args, os.path.join(bpath, 'valid2id.txt'), e_ix_ln, tp_ix, tp_rix, 2)
+    ts_ds = Dataset(args, os.path.join(bpath, 'test2id.txt'), e_ix_ln, tp_ix, tp_rix, 3)
 
     if args.model.startswith('DE'):
         t_ix = FakeTimeIndex()
@@ -364,7 +382,10 @@ def _evaluate(args, mdl, x, y, t, rt_embed, md, mtr):
         else:
             y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=dsc).cpu().numpy()
     for i, y_i in enumerate(y.cpu().numpy()):
-        mtr.update(np.argwhere(y_r[i] == y_i)[0, 0] + 1)
+        r = np.argwhere(y_r[i] == y_i)[0, 0] + 1
+        if args.sampling_technique == 'type':
+            r = np.isin(y_r[i], tp_ix[tp_rix[y_i]])[:r].sum()
+        mtr.update(r)
 
 
 def evaluate(args, b, mdl, mtr):
