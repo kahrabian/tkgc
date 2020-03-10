@@ -63,7 +63,7 @@ class Dataset(tDataset):
             ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
             ss = self._tp_ix[self._tp_rix[p[i][ix]]]
             for _ in range(len(ss)):  # NOTE: Heuristic to make the sampling efficient.
-                s = np.random.choice(ss, 1)[0]
+                s = ss[np.random.randint(0, len(ss))]
                 if s != p[i][ix] and (not self._args.filter or not self._check(p_i, ix, s)):
                     break
             else:  # NOTE: Fallback!
