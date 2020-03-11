@@ -263,7 +263,6 @@ def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
 
     lr_ml = (hvd.local_size() if hvd.nccl_built() else 1) if not args.tpu and args.adasum else _size(args)
     opt = torch.optim.Adam(mdl.parameters(), lr=lr_ml * args.learning_rate, weight_decay=args.weight_decay)
-    lr_sc = torch.optim.lr_scheduler.StepLR(opt, step_size=args.learning_rate_step, gamma=args.learning_rate_gamma)
 
     st_e, bst_ls = _resume(args, mdl, opt) if args.resume != '' else (1, None)
 
@@ -274,6 +273,10 @@ def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
                                        op=hvd.Adasum if args.adasum else hvd.Average)
 
         hvd.broadcast_parameters(mdl.state_dict(), root_rank=0)
+
+    lr_sc = torch.optim.lr_scheduler.StepLR(opt, step_size=args.learning_rate_step, gamma=args.learning_rate_gamma)
+
+    if not args.tpu:
         hvd.broadcast_optimizer_state(opt, root_rank=0)
 
     ls_f = _loss_f(args).to(args.dvc)
