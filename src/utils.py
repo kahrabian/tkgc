@@ -271,11 +271,9 @@ def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
                                        named_parameters=mdl.named_parameters(),
                                        compression=hvd.Compression.fp16 if args.fp16 else hvd.Compression.none,
                                        op=hvd.Adasum if args.adasum else hvd.Average)
-
         hvd.broadcast_parameters(mdl.state_dict(), root_rank=0)
 
     lr_sc = torch.optim.lr_scheduler.StepLR(opt, step_size=args.learning_rate_step, gamma=args.learning_rate_gamma)
-
     if not args.tpu:
         hvd.broadcast_optimizer_state(opt, root_rank=0)
 
