@@ -8,6 +8,11 @@ class AbstractNorm(object):
         return torch.norm(x, p=1 if self.l1 else 2, dim=1)
 
 
+class AbstractSum(object):
+    def _sum(self, x):
+        return torch.sum(x, dim=1)
+
+
 class AbstractDropout(object):
     def _dropout(self, x):
         return F.dropout(x, p=self.dropout, training=self.training)
@@ -137,9 +142,9 @@ class TTransE(nn.Module, AbstractNorm):
         return self._score(s_e, o_e, r_e, t_e)
 
 
-class TADistMult(AbstractTA):
+class TADistMult(AbstractTA, AbstractSum):
     def _score(self, s, o, rt):
-        return torch.sum(s * o * rt, dim=1)
+        return self._sum(s * o * rt)
 
 
 class TATransE(AbstractTA, AbstractNorm):
@@ -147,11 +152,92 @@ class TATransE(AbstractTA, AbstractNorm):
         return self._norm(s + rt - o)
 
 
-class DEDistMult(AbstractDE, AbstractDropout):
+class DEDistMult(AbstractDE, AbstractDropout, AbstractSum):
     def _score(self, st, ot, r):
-        return torch.sum(self._dropout(st * ot * r), dim=1)
+        return self._sum(self._dropout(st * ot * r))
 
 
 class DETransE(AbstractDE, AbstractDropout, AbstractNorm):
     def _score(self, st, ot, r):
         return self._norm(self._dropout(st + r - ot))
+
+
+class DESimplE(torch.nn.Module, AbstractDropout, AbstractSum):
+    def _score(self, s_e_s, r_e_s, o_e_s, s_e_o, r_e_o, o_e_o):
+        return self._sum(self._dropout(((s_e_s * r_e_s) * o_e_s + (s_e_o * r_e_o) * o_e_o) / 2.0))
+
+    def __init__(self, args, e_cnt, r_cnt):
+        super().__init__()
+
+        self.dvc = args.dvc
+        self.dropout = args.dropout
+
+        s_es = int(args.embedding_size * args.static_proportion)
+        t_es = args.embedding_size - s_es
+
+        self.e_embed_s = nn.Embedding(e_cnt, s_es).to(args.aux_dvc)
+        self.e_embed_o = nn.Embedding(e_cnt, s_es).to(args.aux_dvc)
+        self.r_embed_f = nn.Embedding(r_cnt, s_es + t_es).to(self.dvc)
+        self.r_embed_i = nn.Embedding(r_cnt, s_es + t_es).to(self.dvc)
+        nn.init.xavier_uniform_(self.e_embed_s.weight)
+        nn.init.xavier_uniform_(self.e_embed_o.weight)
+        nn.init.xavier_uniform_(self.r_embed_f.weight)
+        nn.init.xavier_uniform_(self.r_embed_i.weight)
+
+        self.d_frq_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.d_frq_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_frq_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_frq_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        nn.init.xavier_uniform_(self.d_frq_embed_s.weight)
+        nn.init.xavier_uniform_(self.d_frq_embed_o.weight)
+        nn.init.xavier_uniform_(self.h_frq_embed_s.weight)
+        nn.init.xavier_uniform_(self.h_frq_embed_o.weight)
+
+        self.d_phi_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.d_phi_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_phi_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_phi_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        nn.init.xavier_uniform_(self.d_phi_embed_s.weight)
+        nn.init.xavier_uniform_(self.d_phi_embed_o.weight)
+        nn.init.xavier_uniform_(self.h_phi_embed_s.weight)
+        nn.init.xavier_uniform_(self.h_phi_embed_o.weight)
+
+        self.d_amp_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.d_amp_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_amp_embed_s = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_amp_embed_o = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        nn.init.xavier_uniform_(self.d_amp_embed_s.weight)
+        nn.init.xavier_uniform_(self.d_amp_embed_o.weight)
+        nn.init.xavier_uniform_(self.h_amp_embed_s.weight)
+        nn.init.xavier_uniform_(self.h_amp_embed_o.weight)
+
+    def _t_embed(self, e, d, h, md):
+        if md == 'S':
+            _d = self.d_amp_embed_s(e).to(self.dvc) * torch.sin(d.view(-1, 1) * self.d_frq_embed_s(e).to(self.dvc)
+                                                                + self.d_phi_embed_s(e).to(self.dvc))
+            _h = self.h_amp_embed_s(e).to(self.dvc) * torch.sin(h.view(-1, 1) * self.h_frq_embed_s(e).to(self.dvc)
+                                                                + self.h_phi_embed_s(e).to(self.dvc))
+        elif md == 'O':
+            _d = self.d_amp_embed_o(e).to(self.dvc) * torch.sin(d.view(-1, 1) * self.d_frq_embed_o(e).to(self.dvc)
+                                                                + self.d_phi_embed_o(e).to(self.dvc))
+            _h = self.h_amp_embed_o(e).to(self.dvc) * torch.sin(h.view(-1, 1) * self.h_frq_embed_o(e).to(self.dvc)
+                                                                + self.h_phi_embed_o(e).to(self.dvc))
+        return _d + _h
+
+    def forward(self, s, o, r, t):
+        d, h = t[:, 0].float(), t[:, 1].float()
+        s_e_s = self.e_embed_s(s).to(self.dvc)
+        o_e_s = self.e_embed_o(o).to(self.dvc)
+        s_e_o = self.e_embed_s(o).to(self.dvc)
+        o_e_o = self.e_embed_o(s).to(self.dvc)
+        r_e_f = self.r_embed_f(r)
+        r_e_i = self.r_embed_i(r)
+        t_e_s_s = self._t_embed(s, d, h, 'S')
+        t_e_o_o = self._t_embed(o, d, h, 'O')
+        t_e_o_s = self._t_embed(o, d, h, 'S')
+        t_e_s_o = self._t_embed(s, d, h, 'O')
+        s_t_s_s = torch.cat((s_e_s, t_e_s_s), dim=1)
+        o_t_s_o = torch.cat((o_e_s, t_e_o_o), dim=1)
+        s_t_o_s = torch.cat((s_e_o, t_e_o_s), dim=1)
+        o_t_o_o = torch.cat((o_e_o, t_e_s_o), dim=1)
+        return self._score(s_t_s_s, r_e_f, o_t_s_o, s_t_o_s, r_e_i, o_t_o_o)

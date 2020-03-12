@@ -96,7 +96,7 @@ def _args():
 
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
     argparser.add_argument('-mo', '--model', type=str, required=True,
-                           choices=['TTransE', 'TADistMult', 'TATransE', 'DEDistMult', 'DETransE'])
+                           choices=['TTransE', 'TADistMult', 'TATransE', 'DEDistMult', 'DETransE', 'DESimplE'])
     argparser.add_argument('-do', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
@@ -416,7 +416,7 @@ def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
 
 
 def _validate(vd_ls, ls):
-    vd_ls.val += ls
+    vd_ls.val += ls.item()
 
 
 def validate(args, e, mdl, opt, ls_f, vd_dl, tp_ix, tp_rix, ls_mtr, tb_sw):
