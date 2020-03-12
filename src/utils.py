@@ -100,6 +100,7 @@ def _args():
     argparser.add_argument('-do', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
+    argparser.add_argument('-sp', '--static-proportion', type=float, default=1.0)
     argparser.add_argument('-mr', '--margin', type=int, default=1)
     argparser.add_argument('-lr', '--learning-rate', type=float, default=0.001)
     argparser.add_argument('-ls', '--learning-rate-step', type=int, default=1)

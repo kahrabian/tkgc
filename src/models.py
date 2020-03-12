@@ -70,23 +70,26 @@ class AbstractDE(torch.nn.Module):
         self.dropout = args.dropout
         self.l1 = args.l1
 
-        self.e_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
-        self.r_embed = nn.Embedding(r_cnt, args.embedding_size * 2).to(self.dvc)
+        s_es = int(args.embedding_size * args.static_proportion)
+        t_es = args.embedding_size - s_es
+
+        self.e_embed = nn.Embedding(e_cnt, s_es).to(args.aux_dvc)
+        self.r_embed = nn.Embedding(r_cnt, s_es + t_es).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed.weight)
         nn.init.xavier_uniform_(self.r_embed.weight)
 
-        self.d_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
-        self.h_frq_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.d_frq_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_frq_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_frq_embed.weight)
         nn.init.xavier_uniform_(self.h_frq_embed.weight)
 
-        self.d_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
-        self.h_phi_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.d_phi_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_phi_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_phi_embed.weight)
         nn.init.xavier_uniform_(self.h_phi_embed.weight)
 
-        self.d_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
-        self.h_amp_embed = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.d_amp_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
+        self.h_amp_embed = nn.Embedding(e_cnt, t_es).to(args.aux_dvc)
         nn.init.xavier_uniform_(self.d_amp_embed.weight)
         nn.init.xavier_uniform_(self.h_amp_embed.weight)
 
