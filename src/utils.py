@@ -95,8 +95,8 @@ def _args():
     argparser = argparse.ArgumentParser()
 
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
-    argparser.add_argument('-mo', '--model', type=str, required=True,
-                           choices=['TTransE', 'TADistMult', 'TATransE', 'DEDistMult', 'DETransE'])
+    argparser.add_argument('-mo', '--model', type=str, required=True, choices=[
+        'TTransE', 'TARotatE', 'TADistMult', 'TATransE', 'DERotatE', 'DEDistMult', 'DETransE'])
     argparser.add_argument('-do', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
@@ -164,6 +164,9 @@ def initialize():
 
     args.dvc = dvc
     args.aux_dvc = aux_dvc
+
+    args.double_entity_embedding_size = args.model in ['TARotatE', 'DERotatE', 'TAComplEx', 'DEComplEx']
+    args.double_relation_embedding_size = args.model in ['TAComplEx', 'DEComplEx']
 
     return args
 
@@ -295,7 +298,7 @@ def _loss(args, p, n, mdl, loss_f):
     if args.model == 'TTransE':
         loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape[0]).to(args.dvc))
     else:
-        x_sc = -1 if args.model.endswith('TransE') else 1
+        x_sc = -1 if args.model.endswith('TransE') or args.model.endswith('RotatE') else 1
         x = x_sc * torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
@@ -346,7 +349,7 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
 
 
 def _p(args):
-    return 1 if args.model.endswith('TTransE') and args.l1 else 2
+    return 1 if (args.model.endswith('TransE') or args.model.endswith('RotatE')) and args.l1 else 2
 
 
 def _evaluate_de(mdl, d, h):
@@ -356,7 +359,7 @@ def _evaluate_de(mdl, d, h):
 
 
 def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
-    dsc = not args.model.endswith('TransE')
+    dsc = not args.model.endswith('TransE') and not args.model.endswith('RotatE')
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
         t_x = mdl._t_embed(x, t[:, 0], t[:, 1])
