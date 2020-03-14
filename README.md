@@ -6,9 +6,11 @@ This repository contains the implementation of the following algorithms:
 - [x] TA-DistMult
 - [x] TA-TransE
 - [x] TA-RotatE
+- [x] TA-ComplEx
 - [x] DE-DistMult
 - [x] DE-TransE
 - [x] DE-RotatE
+- [x] DE-ComplEx
 
 ## Installation
 

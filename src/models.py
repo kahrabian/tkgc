@@ -182,6 +182,18 @@ class TARotatE(AbstractTA, AbstractNorm):
         return self._norm(torch.cat([sc_r, sc_i], dim=1))
 
 
+class TAComplEx(AbstractTA, AbstractSum):
+    def _score(self, s, o, rt):
+        s_r, s_i = torch.chunk(s, 2, dim=1)
+        o_r, o_i = torch.chunk(o, 2, dim=1)
+        rt_r, rt_i = torch.chunk(rt, 2, dim=1)
+
+        sc_r = s_r * rt_r * o_r + s_r * rt_i * o_i
+        sc_i = s_i * rt_r * o_i - s_i * rt_i * o_r
+
+        return self._sum(torch.cat([sc_r, sc_i], dim=1))
+
+
 class TADistMult(AbstractTA, AbstractSum):
     def _score(self, s, o, rt):
         return self._sum(s * o * rt)
@@ -222,3 +234,15 @@ class DERotatE(AbstractDE, AbstractNorm):
         super().__init__(args, e_cnt, r_cnt)
 
         self.e_r = 6 / np.sqrt((2 if self.double_r_es else 1) * args.embedding_size)
+
+
+class DEComplEx(AbstractDE, AbstractSum):
+    def _score(self, st, ot, r):
+        st_r, st_i = torch.chunk(st, 2, dim=1)
+        ot_r, ot_i = torch.chunk(ot, 2, dim=1)
+        r_r, r_i = torch.chunk(r, 2, dim=1)
+
+        sc_r = st_r * r_r * ot_r + st_r * r_i * ot_i
+        sc_i = st_i * r_r * ot_i - st_i * r_i * ot_r
+
+        return self._sum(torch.cat([sc_r, sc_i], dim=1))

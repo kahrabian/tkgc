@@ -95,8 +95,10 @@ def _args():
     argparser = argparse.ArgumentParser()
 
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
-    argparser.add_argument('-mo', '--model', type=str, required=True, choices=[
-        'TTransE', 'TARotatE', 'TADistMult', 'TATransE', 'DERotatE', 'DEDistMult', 'DETransE'])
+    argparser.add_argument('-mo', '--model', type=str, required=True, choices=['DERotatE', 'TARotatE',
+                                                                               'DEComplEx', 'TAComplEx',
+                                                                               'DETransE', 'TATransE', 'TTransE',
+                                                                               'DEDistMult', 'TADistMult'])
     argparser.add_argument('-do', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
