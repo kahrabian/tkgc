@@ -364,12 +364,13 @@ def _evaluate_de(args, mdl, d, h):
             t_y_r, t_y_i = torch.chunk(t_y, 2, dim=1)
             return torch.cat((y_e_r, t_y_r, y_e_i, t_y_i), dim=1)
         else:
-            return torch.cat((y_e_r, t_x, y_e_i, t_x), dim=1)
+            return torch.cat((y_e_r, t_y, y_e_i, t_y), dim=1)
     else:
-        return torch.cat((y_e, t_x), dim=1)
+        return torch.cat((y_e, t_y), dim=1)
 
 
 def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
+    pi = 3.14159265358979323846
     dsc = not args.model.endswith('TransE') and not args.model.endswith('RotatE')
     if args.model.startswith('DE'):
         x_e = mdl.e_embed(x).to(args.dvc)
@@ -412,7 +413,7 @@ def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
         if args.model.startswith('DE'):
             y_r = []
             for i, (d, h) in enumerate(t.squeeze()):
-                y_embed_r, y_embed_i = torch.chunk(_evaluate_de(args, mdl, d.float(), h.float()), 2, dim=1)
+                y_embed_r, y_embed_i = torch.chunk(_evaluate_de(args, mdl, d, h), 2, dim=1)
                 y_rr_i = torch.matmul(xrt_rr[i, :].view(1, -1), y_embed_r.t())
                 y_ri_i = torch.matmul(xrt_ri[i, :].view(1, -1), (y_embed_r.t() if md == 'H' else y_embed_i.t()))
                 y_ii_i = torch.matmul(xrt_ii[i, :].view(1, -1), y_embed_i.t())
@@ -427,7 +428,37 @@ def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
             y_ir = torch.matmul(xrt_ir, (y_embed_i.t() if md == 'H' else y_embed_r.t()))
             y_r = (y_rr + y_ri + y_ii - y_ir).argsort(dim=1, descending=dsc).cpu().numpy()
     elif args.model.endswith('RotatE'):
-        pass
+        rt_embed_p = (pi * rt_embed) / 2
+        rt_embed_r = torch.cos(rt_embed_p)
+        rt_embed_i = torch.sin(rt_embed_p)
+        if args.model.startswith('DE'):
+            if md == 'T':
+                x_embed_r, x_embed_i = torch.chunk(x_embed, 2, dim=1)
+                xrt_r = (x_embed_r * rt_embed_r - x_embed_i * rt_embed_i).to(args.aux_dvc)
+                xrt_i = (x_embed_i * rt_embed_r + x_embed_r * rt_embed_i).to(args.aux_dvc)
+                xrt = torch.cat([xrt_r, xrt_i], dim=1)
+            y_r = []
+            for i, (d, h) in enumerate(t.squeeze()):
+                y_embed = _evaluate_de(args, mdl, d, h)
+                if md == 'H':
+                    y_embed_r, y_embed_i = torch.chunk(y_embed, 2, dim=1)
+                    y_r_r = y_embed_r * y_embed_r[i, :] - y_embed_i * y_embed_i[i, :]
+                    y_r_i = y_embed_r * y_embed_i[i, :] + y_embed_i * y_embed_r[i, :]
+                    y_i = torch.norm(torch.cat([y_r_r, y_r_i], dim=1) - x_embed[i, :], p=_p(args), dim=1)
+                    y_r.append(y_i.view(1, -1))
+                else:
+                    y_r.append(torch.cdist(xrt[i, :].view(1, -1), y_embed, p=_p(args)))
+            y_r = torch.cat(y_r).argsort(dim=1, descending=dsc).cpu().numpy()
+        else:
+            if md == 'H':
+                y_embed_r, y_embed_i = torch.chunk(mdl.e_embed.weight, 2, dim=1)
+                y_r = []
+                for i, (r_r, r_i) in enumerate(zip(rt_embed_r, rt_embed_i)):
+                    y_r_i = torch.cat([y_embed_r * r_r - y_embed_i * r_i, y_embed_r * r_i + y_embed_i * r_r], dim=1)
+                    y_r.append(torch.norm(y_r_i - x_embed[i, :], p=_p(args), dim=1).view(1, -1))
+                y_r = torch.cat(y_r).argsort(dim=1, descending=dsc).cpu().numpy()
+            else:
+                y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=dsc).cpu().numpy()
     for i, y_i in enumerate(y.cpu().numpy()):
         r = np.argwhere(y_r[i] == y_i)[0, 0] + 1
         if args.sampling_technique == 'type':
