@@ -22,9 +22,9 @@ class Dataset(tDataset):
             ft = [f'{d}{h}', ]
         return ft
 
-    def transform(self, ix, ts=True, ts_bs=None):
+    def transform(self, ix, qs=True, qs_bs=None):
         self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [ix[y] for y in x[3:]], 2, self._d)
-        self._ts = {**ts_bs, **{tuple(x): True for x in self._d[0, :, :3]}} if ts else {}
+        self._qs = {**qs_bs, **{tuple(x): True for x in self._d[0]}} if qs else {}
 
     def __array__(self):
         return self._d
@@ -46,7 +46,7 @@ class Dataset(tDataset):
 
     def _check(self, p_i, ix, s):
         p_i[ix] = s
-        return self._ts.get(tuple(p_i[:3]), False)
+        return self._qs.get(tuple(p_i), False)
 
     def _corrupt(self, p):
         for i, p_i in enumerate(p):
@@ -72,13 +72,20 @@ class Dataset(tDataset):
                     s = np.random.randint(0, self._e_ix_ln)
             p[i][ix] = s
 
+    def _corrupt_time(self, p):
+        pass
+
     def _prepare(self, x):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
         n = np.repeat(x, self._args.negative_samples, axis=0)
+
+        tf = int(np.ceil(len(p) * self._args.time_fraction))
         if self._args.sampling_technique == 'random':
-            self._corrupt(n)
+            self._corrupt(n[:-tf])
         elif self._args.sampling_technique == 'type':
-            self._corrupt_type(n)
+            self._corrupt_type(n[:-tf])
+        if tf > 0:
+            self._corrupt_time(n[-tf:])
         return p, n
 
     def __getitem__(self, i):
