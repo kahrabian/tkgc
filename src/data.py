@@ -49,28 +49,28 @@ class Dataset(tDataset):
         return self._qs.get(tuple(p_i), False)
 
     def _corrupt(self, p):
-        for i, p_i in enumerate(p):
-            p_i = p_i.copy()
+        for p_i in p:
+            p_i_c = p_i.copy()
             ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
             s = np.random.randint(0, self._e_ix_ln)
-            while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
+            while s == p_i[ix] or (self._args.filter and self._check(p_i_c, ix, s)):
                 s = np.random.randint(0, self._e_ix_ln)
-            p[i][ix] = s
+            p_i[ix] = s
 
     def _corrupt_type(self, p):
-        for i, p_i in enumerate(p):
-            p_i = p_i.copy()
+        for p_i in p:
+            p_i_c = p_i.copy()
             ix = 0 if np.random.random() < 0.5 else 1  # NOTE: Head vs Tail
-            ss = self._tp_ix[self._tp_rix[p[i][ix]]]
+            ss = self._tp_ix[self._tp_rix[p_i[ix]]]
             for _ in range(len(ss)):  # NOTE: Heuristic to make the sampling efficient.
                 s = ss[np.random.randint(0, len(ss))]
-                if s != p[i][ix] and (not self._args.filter or not self._check(p_i, ix, s)):
+                if s != p_i[ix] and (not self._args.filter or not self._check(p_i_c, ix, s)):
                     break
             else:  # NOTE: Fallback!
                 s = np.random.randint(0, self._e_ix_ln)
-                while s == p[i][ix] or (self._args.filter and self._check(p_i, ix, s)):
+                while s == p_i[ix] or (self._args.filter and self._check(p_i_c, ix, s)):
                     s = np.random.randint(0, self._e_ix_ln)
-            p[i][ix] = s
+            p_i[ix] = s
 
     def _corrupt_time(self, p):
         pass
@@ -79,13 +79,12 @@ class Dataset(tDataset):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
         n = np.repeat(x, self._args.negative_samples, axis=0)
 
-        tf = int(np.ceil(len(p) * self._args.time_fraction))
+        sf = int(np.ceil(n.shape[0] * (1 - self._args.time_fraction)))
         if self._args.sampling_technique == 'random':
-            self._corrupt(n[:-tf])
+            self._corrupt(n[:sf])
         elif self._args.sampling_technique == 'type':
-            self._corrupt_type(n[:-tf])
-        if tf > 0:
-            self._corrupt_time(n[-tf:])
+            self._corrupt_type(n[:sf])
+        self._corrupt_time(n[sf:])
         return p, n
 
     def __getitem__(self, i):
