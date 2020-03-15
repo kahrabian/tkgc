@@ -193,8 +193,8 @@ class TAComplEx(AbstractTA, AbstractSum):
         o_r, o_i = torch.chunk(o, 2, dim=1)
         rt_r, rt_i = torch.chunk(rt, 2, dim=1)
 
-        sc_r = s_r * rt_r * o_r + s_r * rt_i * o_i
-        sc_i = s_i * rt_r * o_i - s_i * rt_i * o_r
+        sc_r = s_r * rt_r * o_r - s_i * rt_i * o_r
+        sc_i = s_r * rt_i * o_i + s_i * rt_r * o_i
 
         return self._sum(torch.cat([sc_r, sc_i], dim=1))
 
@@ -247,7 +247,7 @@ class DEComplEx(AbstractDE, AbstractSum):
         ot_r, ot_i = torch.chunk(ot, 2, dim=1)
         r_r, r_i = torch.chunk(r, 2, dim=1)
 
-        sc_r = st_r * r_r * ot_r + st_r * r_i * ot_i
-        sc_i = st_i * r_r * ot_i - st_i * r_i * ot_r
+        sc_r = st_r * r_r * ot_r - st_i * r_i * ot_r
+        sc_i = st_r * r_i * ot_i + st_i * r_r * ot_i
 
         return self._sum(torch.cat([sc_r, sc_i], dim=1))

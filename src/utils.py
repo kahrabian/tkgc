@@ -418,7 +418,7 @@ def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
                 y_ri_i = torch.matmul(xrt_ri[i, :].view(1, -1), (y_embed_r.t() if md == 'H' else y_embed_i.t()))
                 y_ii_i = torch.matmul(xrt_ii[i, :].view(1, -1), y_embed_i.t())
                 y_ir_i = torch.matmul(xrt_ir[i, :].view(1, -1), (y_embed_i.t() if md == 'H' else y_embed_r.t()))
-                y_r.append(y_rr_i + y_ri_i + y_ii_i - y_ir_i)
+                y_r.append((y_rr_i - y_ir_i) + (y_ri_i + y_ii_i))
             y_r = torch.cat(y_r).argsort(dim=1, descending=dsc).cpu().numpy()
         else:
             y_embed_r, y_embed_i = torch.chunk(mdl.e_embed.weight, 2, dim=1)
