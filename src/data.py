@@ -15,16 +15,19 @@ class Dataset(tDataset):
         t = datetime.fromtimestamp(int(t))
         d, h = t.day, t.hour  # NOTE: Could use other parts too!
         if self._args.model.startswith('DE'):
-            ft = [f'{d}', f'{h}']
+            ft = [f'{d:02}', f'{h:02}']
         elif self._args.model.startswith('TA'):
             ft = [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
         else:
-            ft = [f'{d}{h}', ]
+            ft = [f'{d:02}{h:02}', ]
         return ft
 
-    def transform(self, ix, qs=True, qs_bs=None):
-        self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [ix[y] for y in x[3:]], 2, self._d)
+    def transform(self, t_ix, qs=True, qs_bs=None):
+        self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [t_ix[y] for y in x[3:]], 2, self._d)
         self._qs = {**qs_bs, **{tuple(x): True for x in self._d[0]}} if qs else {}
+
+        self._t_ix = t_ix
+        self._t_ix_ln = len(t_ix)
 
     def __array__(self):
         return self._d
@@ -73,7 +76,16 @@ class Dataset(tDataset):
             p_i[ix] = s
 
     def _corrupt_time(self, p):
-        pass
+        for p_i in p:
+            p_i_c = p_i.copy()
+            if self._args.model == 'TTransE':
+                ix = 3
+                s = np.random.randint(0, self._t_ix_ln)
+                while s == p_i[ix] or (self._args.filter and self._check(p_i_c, ix, s)):
+                    s = np.random.randint(0, self._t_ix_ln)
+                p_i[ix] = s
+            else:
+                pass
 
     def _prepare(self, x):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
