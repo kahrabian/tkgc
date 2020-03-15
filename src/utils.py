@@ -431,12 +431,12 @@ def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
         rt_embed_p = (pi * rt_embed) / mdl.e_r
         rt_embed_r = torch.cos(rt_embed_p)
         rt_embed_i = torch.sin(rt_embed_p)
+        if md == 'T':
+            x_embed_r, x_embed_i = torch.chunk(x_embed, 2, dim=1)
+            xrt_r = (x_embed_r * rt_embed_r - x_embed_i * rt_embed_i).to(args.aux_dvc)
+            xrt_i = (x_embed_i * rt_embed_r + x_embed_r * rt_embed_i).to(args.aux_dvc)
+            xrt = torch.cat([xrt_r, xrt_i], dim=1)
         if args.model.startswith('DE'):
-            if md == 'T':
-                x_embed_r, x_embed_i = torch.chunk(x_embed, 2, dim=1)
-                xrt_r = (x_embed_r * rt_embed_r - x_embed_i * rt_embed_i).to(args.aux_dvc)
-                xrt_i = (x_embed_i * rt_embed_r + x_embed_r * rt_embed_i).to(args.aux_dvc)
-                xrt = torch.cat([xrt_r, xrt_i], dim=1)
             y_r = []
             for i, (d, h) in enumerate(t.squeeze()):
                 y_embed = _evaluate_de(args, mdl, d, h)
