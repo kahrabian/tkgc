@@ -15,11 +15,11 @@ class Dataset(tDataset):
         t = datetime.fromtimestamp(int(t))
         d, h = t.day, t.hour  # NOTE: Could use other parts too!
         if self._args.model.startswith('DE'):
-            ft = [f'{d:02}', f'{h:02}']
+            ft = [f'{d}', f'{h}']
         elif self._args.model.startswith('TA'):
             ft = [f'{x}d' for x in f'{d:02}'] + [f'{x}h' for x in f'{h:02}']
         else:
-            ft = [f'{d:02}{h:02}', ]
+            ft = [f'{d}{h}', ]
         return ft
 
     def transform(self, t_ix, qs=True, qs_bs=None):
@@ -84,8 +84,26 @@ class Dataset(tDataset):
                 while s == p_i[ix] or (self._args.filter and self._check(p_i_c, ix, s)):
                     s = np.random.randint(0, self._t_ix_ln)
                 p_i[ix] = s
-            else:
-                pass
+            elif self._args.model.startswith('TA'):
+                ix = [3, 4, 5, 6]
+                s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                s_h = np.random.randint(0, 24)  # NOTE: Hour
+                s = [self._t_ix[f'{x}d'] for x in f'{s_d:02}'] + [self._t_ix[f'{x}h'] for x in f'{s_h:02}']
+                while (s == p_i[ix]).all() or (self._args.filter and self._check(p_i_c, ix, s)):
+                    s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                    s_h = np.random.randint(0, 24)  # NOTE: Hour
+                    s = [self._t_ix[f'{x}d'] for x in f'{s_d:02}'] + [self._t_ix[f'{x}h'] for x in f'{s_h:02}']
+                p_i[ix] = s
+            elif self._args.model.startswith('DE'):
+                ix = [3, 4]
+                s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                s_h = np.random.randint(0, 24)  # NOTE: Hour
+                s = [s_d, s_h]
+                while (s == p_i[ix]).all() or (self._args.filter and self._check(p_i_c, ix, s)):
+                    s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                    s_h = np.random.randint(0, 24)  # NOTE: Hour
+                    s = [s_d, s_h]
+                p_i[ix] = s
 
     def _prepare(self, x):
         p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
