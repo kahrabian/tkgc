@@ -112,6 +112,7 @@ def _args():
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
     argparser.add_argument('-ns', '--negative-samples', type=int, default=1)
     argparser.add_argument('-st', '--sampling-technique', type=str, default='random', choices=['random', 'type'])
+    argparser.add_argument('-tf', '--time-fraction', type=float, default=0.0)
     argparser.add_argument('-fl', '--filter', default=True, action='store_true')
     argparser.add_argument('-rs', '--resume', type=str, default='')
     argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
@@ -210,9 +211,9 @@ def data(args):
         t_ix = {e: i for i, e in enumerate(np.unique(al_t))}
     t_ix_ln = len(t_ix)
 
-    tr_ds.transform(t_ix, ts_bs={})
-    vd_ds.transform(t_ix, ts_bs=tr_ds._ts)
-    ts_ds.transform(t_ix, ts=False)
+    tr_ds.transform(t_ix, qs_bs={})
+    vd_ds.transform(t_ix, qs_bs=tr_ds._qs)
+    ts_ds.transform(t_ix, qs=False)
 
     tr_smp = DistributedSampler(tr_ds, num_replicas=_size(args), rank=_rank(args))
     vd_smp = DistributedSampler(vd_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
