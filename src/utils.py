@@ -428,7 +428,7 @@ def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
             y_ir = torch.matmul(xrt_ir, (y_embed_i.t() if md == 'H' else y_embed_r.t()))
             y_r = (y_rr + y_ri + y_ii - y_ir).argsort(dim=1, descending=dsc).cpu().numpy()
     elif args.model.endswith('RotatE'):
-        rt_embed_p = (pi * rt_embed) / 2
+        rt_embed_p = (pi * rt_embed) / mdl.e_r
         rt_embed_r = torch.cos(rt_embed_p)
         rt_embed_i = torch.sin(rt_embed_p)
         if args.model.startswith('DE'):

@@ -172,7 +172,7 @@ class TARotatE(AbstractTA, AbstractNorm):
         s_r, s_i = torch.chunk(s, 2, dim=1)
         o_r, o_i = torch.chunk(o, 2, dim=1)
 
-        rt_p = (self.pi * rt) / 2
+        rt_p = (self.pi * rt) / self.e_r
         rt_r = torch.cos(rt_p)
         rt_i = torch.sin(rt_p)
 
@@ -180,6 +180,11 @@ class TARotatE(AbstractTA, AbstractNorm):
         sc_i = s_r * rt_i + s_i * rt_r - o_i
 
         return self._norm(torch.cat([sc_r, sc_i], dim=1))
+
+    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+        super().__init__(args, e_cnt, r_cnt, t_cnt)
+
+        self.e_r = 1  # NOTE: LSTM outputs are from [-1, 1]
 
 
 class TAComplEx(AbstractTA, AbstractSum):
