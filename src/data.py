@@ -125,7 +125,7 @@ class Dataset(tDataset):
             x[:self._e_ix_ln, 0] = np.arange(self._e_ix_ln)
         if self._args.mode != 'head':
             y_ix.append(1)
-            x[self._e_ix_ln:, 1] = np.arange(self._e_ix_ln)
+            x[-self._e_ix_ln:, 1] = np.arange(self._e_ix_ln)
         y = d[0][y_ix]
         return x, y
 

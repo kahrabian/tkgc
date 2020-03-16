@@ -366,15 +366,15 @@ def _evaluate(args, y_r, y, tp_ix, tp_rix, mtr):
 
 def evaluate(args, x, y, mdl, tp_ix, tp_rix, mtr):
     x_s, x_o, x_r, x_t = x[:, 0], x[:, 1], x[:, 2].to(args.dvc), x[:, 3:].to(args.dvc)
-    s_x = mdl(x_s, x_o, x_r, x_t)
-    y_r = s_x.view(args.test_batch_size, -1).argsort(dim=1, descending=True)
+    s_x = mdl(x_s, x_o, x_r, x_t).view(args.test_batch_size, -1)
 
     if args.mode == 'both':
         y_s, y_o = torch.chunk(y, 2, dim=1)
-        y_r_s, y_r_o = torch.chunk(y_r, 2, dim=1)
+        y_r_s, y_r_o = list(map(lambda x: x.argsort(dim=1, descending=True), torch.chunk(s_x, 2, dim=1)))
         _evaluate(args, y_r_s, y_s, tp_ix, tp_rix, mtr)
         _evaluate(args, y_r_o, y_o, tp_ix, tp_rix, mtr)
     else:
+        y_r = s_x.argsort(dim=1, descending=True)
         _evaluate(args, y_r, y, tp_ix, tp_rix, mtr)
 
 
