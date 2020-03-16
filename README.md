@@ -3,14 +3,16 @@
 This repository contains the implementation of the following algorithms:
 
 - [x] TTransE
-- [x] TA-DistMult
 - [x] TA-TransE
-- [x] TA-RotatE
-- [x] TA-ComplEx
-- [x] DE-DistMult
 - [x] DE-TransE
-- [x] DE-RotatE
+- [x] TA-DistMult
+- [x] DE-DistMult
+- [x] TA-ComplEx
 - [x] DE-ComplEx
+- [x] TA-SimplE
+- [x] DE-SimplE
+- [x] TA-RotatE
+- [x] DE-RotatE
 
 ## Installation
 
@@ -34,7 +36,7 @@ Sample distributed CPU/GPU training configuration with 2 processes:
 
 ```bash
 horovodrun -np 2 -H localhost:2 python -BW ignore main.py \
-           --dataset GitGraph \
+           --dataset [DATASET] \
            --model DEDistMult \
            --dropout 0.2 \
            --embedding-size 128 \
@@ -52,7 +54,7 @@ horovodrun -np 2 -H localhost:2 python -BW ignore main.py \
 Sample distributed TPU training configuration with 2 processes:
 
 ```bash
-NPROC=1 python -BW ignore main.py --dataset GitGraph_0.01 \
+NPROC=1 python -BW ignore main.py --dataset [DATASET] \
                                   --model DEDistMult \
                                   --dropout 0.2 \
                                   --embedding-size 128 \
