@@ -95,8 +95,11 @@ def _args():
     argparser = argparse.ArgumentParser()
 
     argparser.add_argument('-ds', '--dataset', type=str, required=True)
-    argparser.add_argument('-mo', '--model', type=str, required=True,
-                           choices=['TTransE', 'TADistMult', 'TATransE', 'DEDistMult', 'DETransE', 'DESimplE'])
+    argparser.add_argument('-mo', '--model', type=str, required=True, choices=['DERotatE', 'TARotatE',
+                                                                               'DEComplEx', 'TAComplEx',
+                                                                               'DETransE', 'TATransE', 'TTransE',
+                                                                               'DEDistMult', 'TADistMult',
+                                                                               'DESimplE', 'TASimplE'])
     argparser.add_argument('-do', '--dropout', type=float, default=0)
     argparser.add_argument('-l1', '--l1', default=False, action='store_true')
     argparser.add_argument('-es', '--embedding-size', type=int, default=128)
@@ -108,15 +111,17 @@ def _args():
     argparser.add_argument('-wd', '--weight-decay', type=float, default=0)
     argparser.add_argument('-ep', '--epochs', type=int, default=1000)
     argparser.add_argument('-bs', '--batch-size', type=int, default=512)
+    argparser.add_argument('-tb', '--test-batch-size', type=int, default=512)
     argparser.add_argument('-ns', '--negative-samples', type=int, default=1)
     argparser.add_argument('-st', '--sampling-technique', type=str, default='random', choices=['random', 'type'])
+    argparser.add_argument('-tf', '--time-fraction', type=float, default=0.0)
     argparser.add_argument('-fl', '--filter', default=True, action='store_true')
     argparser.add_argument('-rs', '--resume', type=str, default='')
     argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
     argparser.add_argument('-fp', '--fp16', default=False, action='store_true')
     argparser.add_argument('-as', '--adasum', default=False, action='store_true')
     argparser.add_argument('-ts', '--test', default=False, action='store_true')
-    argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
+    argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both', 'time'])
     argparser.add_argument('-vf', '--validation-frequency', type=int, default=100)
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
     argparser.add_argument('-tp', '--tpu', default=False, action='store_true')
@@ -165,6 +170,9 @@ def initialize():
     args.dvc = dvc
     args.aux_dvc = aux_dvc
 
+    args.double_entity_embedding_size = args.model in ['TARotatE', 'DERotatE', 'TAComplEx', 'DEComplEx']
+    args.double_relation_embedding_size = args.model in ['TAComplEx', 'DEComplEx']
+
     return args
 
 
@@ -205,9 +213,9 @@ def data(args):
         t_ix = {e: i for i, e in enumerate(np.unique(al_t))}
     t_ix_ln = len(t_ix)
 
-    tr_ds.transform(t_ix, ts_bs={})
-    vd_ds.transform(t_ix, ts_bs=tr_ds._ts)
-    ts_ds.transform(t_ix, ts=False)
+    tr_ds.transform(t_ix, qs_bs={})
+    vd_ds.transform(t_ix, qs_bs=tr_ds._qs)
+    ts_ds.transform(t_ix, qs=False)
 
     tr_smp = DistributedSampler(tr_ds, num_replicas=_size(args), rank=_rank(args))
     vd_smp = DistributedSampler(vd_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
@@ -220,13 +228,13 @@ def data(args):
                        pin_memory=not args.tpu,
                        drop_last=args.tpu)
     vd_dl = DataLoader(vd_ds,
-                       batch_size=args.batch_size,
+                       batch_size=args.test_batch_size,
                        sampler=vd_smp,
                        num_workers=args.workers,
                        pin_memory=not args.tpu,
                        drop_last=args.tpu)
     ts_dl = DataLoader(ts_ds,
-                       batch_size=args.batch_size,
+                       batch_size=args.test_batch_size,
                        sampler=ts_smp,
                        num_workers=args.workers,
                        pin_memory=not args.tpu,
@@ -284,8 +292,8 @@ def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
 
 
 def _loss(args, p, n, mdl, loss_f):
-    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].squeeze().to(args.dvc)
-    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].squeeze().to(args.dvc)
+    p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].to(args.dvc)
+    n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].to(args.dvc)
 
     if mdl.training:
         mdl.zero_grad()
@@ -293,10 +301,9 @@ def _loss(args, p, n, mdl, loss_f):
     s_n = mdl(n_s, n_o, n_r, n_t)
 
     if args.model == 'TTransE':
-        loss = loss_f(s_p, s_n, (-1) * torch.ones(s_p.shape[0]).to(args.dvc))
+        loss = loss_f(s_p, s_n, torch.ones(s_p.shape[0]).to(args.dvc))
     else:
-        x_sc = -1 if args.model.endswith('TransE') else 1
-        x = x_sc * torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
+        x = torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
 
@@ -346,59 +353,30 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
 
 
 def _p(args):
-    return 1 if args.model.endswith('TTransE') and args.l1 else 2
+    return 1 if (args.model.endswith('TransE') or args.model.endswith('RotatE')) and args.l1 else 2
 
 
-def _evaluate_de(mdl, d, h):
-    return torch.cat((mdl.e_embed.weight,
-                      mdl.d_amp_embed.weight * torch.sin(d * mdl.d_frq_embed.weight + mdl.d_phi_embed.weight) +
-                      mdl.h_amp_embed.weight * torch.sin(h * mdl.h_frq_embed.weight + mdl.h_phi_embed.weight)), dim=1)
-
-
-def _evaluate(args, mdl, x, y, t, rt_embed, tp_ix, tp_rix, md, mtr):
-    dsc = not args.model.endswith('TransE')
-    if args.model.startswith('DE'):
-        x_e = mdl.e_embed(x).to(args.dvc)
-        t_x = mdl._t_embed(x, t[:, 0], t[:, 1])
-        x_embed = torch.cat((x_e, t_x), dim=1)
-    else:
-        x_embed = mdl.e_embed(x).to(args.dvc)
-        y_embed = mdl.e_embed.weight
-    if args.model.endswith('DistMult'):
-        xrt = (x_embed * rt_embed).to(args.aux_dvc)
-        if args.model.startswith('DE'):
-            y_r = torch.cat([torch.matmul(xrt[i, :].view(1, -1), _evaluate_de(mdl, d.float(), h.float()).t())
-                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
-        else:
-            y_r = torch.matmul(xrt, y_embed.t()).argsort(dim=1, descending=dsc).cpu().numpy()
-    elif args.model.endswith('TransE'):
-        xrt = (x_embed + (-1 if md == 'H' else 1) * rt_embed).to(args.aux_dvc)
-        if args.model.startswith('DE'):
-            y_r = torch.cat([torch.cdist(xrt[i, :].view(1, -1), _evaluate_de(mdl, d.float(), h.float()), p=_p(args))
-                             for i, (d, h) in enumerate(t.squeeze())]).argsort(dim=1, descending=dsc).cpu().numpy()
-        else:
-            y_r = torch.cdist(xrt, y_embed, p=_p(args)).argsort(dim=1, descending=dsc).cpu().numpy()
-    for i, y_i in enumerate(y.cpu().numpy()):
-        r = np.argwhere(y_r[i] == y_i)[0, 0] + 1
+def _evaluate(args, y_r, y, tp_ix, tp_rix, mtr):
+    y_r = y_r.cpu().numpy()
+    for i, y_i in enumerate(y.numpy()):
+        r = np.argwhere(y_r[i] == y_i[0])[0, 0] + 1
         if args.sampling_technique == 'type':
-            r = np.isin(y_r[i], tp_ix[tp_rix[y_i]])[:r].sum()
+            r = np.isin(y_r[i], tp_ix[tp_rix[y_i[0]]])[:r].sum()
         mtr.update(r)
 
 
-def evaluate(args, b, mdl, tp_ix, tp_rix, mtr):
-    ts_r, ts_t = b[:, 2].to(args.dvc), b[:, 3:].squeeze().to(args.dvc)
-    if args.model.startswith('DE'):
-        rt_embed = mdl.r_embed(ts_r)
-    elif args.model.startswith('TA'):
-        rt_embed = mdl.rt_embed(ts_r, ts_t)
+def evaluate(args, x, y, mdl, tp_ix, tp_rix, mtr):
+    x_s, x_o, x_r, x_t = x[:, 0], x[:, 1], x[:, 2].to(args.dvc), x[:, 3:].to(args.dvc)
+    s_x = mdl(x_s, x_o, x_r, x_t).view(args.test_batch_size, -1)
+
+    if args.mode == 'both':
+        y_s, y_o = torch.chunk(y, 2, dim=1)
+        y_r_s, y_r_o = list(map(lambda x: x.argsort(dim=1, descending=True), torch.chunk(s_x, 2, dim=1)))
+        _evaluate(args, y_r_s, y_s, tp_ix, tp_rix, mtr)
+        _evaluate(args, y_r_o, y_o, tp_ix, tp_rix, mtr)
     else:
-        rt_embed = mdl.r_embed(ts_r) + mdl.t_embed(ts_t)
-
-    if args.mode != 'tail':
-        _evaluate(args, mdl, b[:, 1], b[:, 0], b[:, 3:], rt_embed, tp_ix, tp_rix, 'H', mtr)
-
-    if args.mode != 'head':
-        _evaluate(args, mdl, b[:, 0], b[:, 1], b[:, 3:], rt_embed, tp_ix, tp_rix, 'T', mtr)
+        y_r = s_x.argsort(dim=1, descending=True)
+        _evaluate(args, y_r, y, tp_ix, tp_rix, mtr)
 
 
 def _checkpoint(args, e, mdl, opt, bst_ls, is_bst):
@@ -427,10 +405,10 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, tp_ix, tp_rix, ls_mtr, tb_sw):
 
     mdl.eval()
     with torch.no_grad():
-        for p, n, b in vd:
+        for p, n, x, y in vd:
             p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
             n = n.view(-1, n.shape[-1]).to(args.aux_dvc)
-            b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
+            x = x.view(-1, x.shape[-1]).to(args.aux_dvc)
 
             ls = _loss(args, p, n, mdl, ls_f)
             if args.tpu:
@@ -438,7 +416,7 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, tp_ix, tp_rix, ls_mtr, tb_sw):
             else:
                 _validate(vd_ls, ls)
 
-            evaluate(args, b, mdl, tp_ix, tp_rix, mtr)
+            evaluate(args, x, y, mdl, tp_ix, tp_rix, mtr)
 
     vd_ls.val /= len(vd_dl)
     vd_ls_avg = vd_ls.val if args.tpu else _allreduce(vd_ls.val, 'validate.vd_ls_avg', hvd.Average)
@@ -462,9 +440,9 @@ def test(args, mdl, ts_dl, tp_ix, tp_rix, tb_sw):
 
     mdl.eval()
     with torch.no_grad():
-        for b in ts:
-            b = b.view(-1, b.shape[-1]).to(args.aux_dvc)
-            evaluate(args, b, mdl, tp_ix, tp_rix, mtr)
+        for x, y in ts:
+            x = x.view(-1, x.shape[-1]).to(args.aux_dvc)
+            evaluate(args, x, y, mdl, tp_ix, tp_rix, mtr)
 
     if not args.tpu:
         mtr.allreduce()
