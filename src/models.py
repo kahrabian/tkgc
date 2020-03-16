@@ -142,7 +142,7 @@ class AbstractDE(torch.nn.Module, AbstractDropout):
 
 class TTransE(nn.Module, AbstractNorm):
     def _score(self, s, o, r, t):
-        return self._norm(s + r + t - o)
+        return (-1) * self._norm(s + r + t - o)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super().__init__()
@@ -161,7 +161,7 @@ class TTransE(nn.Module, AbstractNorm):
         s_e = self.e_embed(s).to(self.dvc)
         o_e = self.e_embed(o).to(self.dvc)
         r_e = self.r_embed(r)
-        t_e = self.t_embed(t)
+        t_e = self.t_embed(t).squeeze()
         return self._score(s_e, o_e, r_e, t_e)
 
 
@@ -179,7 +179,7 @@ class TARotatE(AbstractTA, AbstractNorm):
         sc_r = s_r * rt_r - s_i * rt_i - o_r
         sc_i = s_r * rt_i + s_i * rt_r - o_i
 
-        return self._norm(torch.cat([sc_r, sc_i], dim=1))
+        return (-1) * self._norm(torch.cat([sc_r, sc_i], dim=1))
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super().__init__(args, e_cnt, r_cnt, t_cnt)
@@ -206,7 +206,7 @@ class TADistMult(AbstractTA, AbstractSum):
 
 class TATransE(AbstractTA, AbstractNorm):
     def _score(self, s, o, rt):
-        return self._norm(s + rt - o)
+        return (-1) * self._norm(s + rt - o)
 
 
 class DEDistMult(AbstractDE, AbstractSum):
@@ -216,7 +216,7 @@ class DEDistMult(AbstractDE, AbstractSum):
 
 class DETransE(AbstractDE, AbstractNorm):
     def _score(self, st, ot, r):
-        return self._norm(self._dropout(st + r - ot))
+        return (-1) * self._norm(self._dropout(st + r - ot))
 
 
 class DERotatE(AbstractDE, AbstractNorm):
@@ -233,7 +233,7 @@ class DERotatE(AbstractDE, AbstractNorm):
         sc_r = st_r * r_r - st_i * r_i - ot_r
         sc_i = st_r * r_i + st_i * r_r - ot_i
 
-        return self._norm(self._dropout(torch.cat([sc_r, sc_i], dim=1)))
+        return (-1) * self._norm(self._dropout(torch.cat([sc_r, sc_i], dim=1)))
 
     def __init__(self, args, e_cnt, r_cnt):
         super().__init__(args, e_cnt, r_cnt)

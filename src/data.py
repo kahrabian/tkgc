@@ -105,9 +105,9 @@ class Dataset(tDataset):
                     s = [s_d, s_h]
                 p_i[ix] = s
 
-    def _prepare(self, x):
-        p = np.repeat(x, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
-        n = np.repeat(x, self._args.negative_samples, axis=0)
+    def _prepare_train(self, d):
+        p = np.repeat(d, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
+        n = np.repeat(d, self._args.negative_samples, axis=0)
 
         sf = int(np.ceil(n.shape[0] * (1 - self._args.time_fraction)))
         if self._args.sampling_technique == 'random':
@@ -117,10 +117,22 @@ class Dataset(tDataset):
         self._corrupt_time(n[sf:])
         return p, n
 
+    def _prepare_test(self, d):
+        y_ix = []
+        x = np.repeat(d, self._e_ix_ln * (2 if self._args.mode == 'both' else 1), axis=0)
+        if self._args.mode != 'tail':
+            y_ix.append(0)
+            x[:self._e_ix_ln, 0] = np.arange(self._e_ix_ln)
+        if self._args.mode != 'head':
+            y_ix.append(1)
+            x[self._e_ix_ln:, 1] = np.arange(self._e_ix_ln)
+        y = d[0][y_ix]
+        return x, y
+
     def __getitem__(self, i):
         if self._md == 1:
-            return self._prepare(self._d[:, i])
+            return self._prepare_train(self._d[:, i])
         if self._md == 2:
-            return self._prepare(self._d[:, i]) + (self._d[:, i],)
+            return self._prepare_train(self._d[:, i]) + self._prepare_test(self._d[:, i])
         if self._md == 3:
-            return self._d[:, i]
+            return self._prepare_test(self._d[:, i])
