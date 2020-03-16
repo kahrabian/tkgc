@@ -86,28 +86,28 @@ class Dataset(tDataset):
                 p_i[ix] = s
             elif self._args.model.startswith('TA'):
                 ix = [3, 4, 5, 6]
-                s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                s_d = np.random.randint(1, 32)  # NOTE: We assume that each month has 31 days!
                 s_h = np.random.randint(0, 24)  # NOTE: Hour
                 s = [self._t_ix[f'{x}d'] for x in f'{s_d:02}'] + [self._t_ix[f'{x}h'] for x in f'{s_h:02}']
                 while (s == p_i[ix]).all() or (self._args.filter and self._check(p_i_c, ix, s)):
-                    s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                    s_d = np.random.randint(1, 32)  # NOTE: We assume that each month has 31 days!
                     s_h = np.random.randint(0, 24)  # NOTE: Hour
                     s = [self._t_ix[f'{x}d'] for x in f'{s_d:02}'] + [self._t_ix[f'{x}h'] for x in f'{s_h:02}']
                 p_i[ix] = s
             elif self._args.model.startswith('DE'):
                 ix = [3, 4]
-                s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                s_d = np.random.randint(1, 32)  # NOTE: We assume that each month has 31 days!
                 s_h = np.random.randint(0, 24)  # NOTE: Hour
                 s = [s_d, s_h]
                 while (s == p_i[ix]).all() or (self._args.filter and self._check(p_i_c, ix, s)):
-                    s_d = np.random.randint(0, 31)  # NOTE: We assume that each month has 30 days!
+                    s_d = np.random.randint(1, 32)  # NOTE: We assume that each month has 31 days!
                     s_h = np.random.randint(0, 24)  # NOTE: Hour
                     s = [s_d, s_h]
                 p_i[ix] = s
 
-    def _prepare_train(self, d):
-        p = np.repeat(d, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
-        n = np.repeat(d, self._args.negative_samples, axis=0)
+    def _prepare_train(self, d_i):
+        p = np.repeat(d_i, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
+        n = np.repeat(d_i, self._args.negative_samples, axis=0)
 
         sf = int(np.ceil(n.shape[0] * (1 - self._args.time_fraction)))
         if self._args.sampling_technique == 'random':
@@ -117,16 +117,39 @@ class Dataset(tDataset):
         self._corrupt_time(n[sf:])
         return p, n
 
-    def _prepare_test(self, d):
-        y_ix = []
-        x = np.repeat(d, self._e_ix_ln * (2 if self._args.mode == 'both' else 1), axis=0)
-        if self._args.mode != 'tail':
-            y_ix.append(0)
-            x[:self._e_ix_ln, 0] = np.arange(self._e_ix_ln)
-        if self._args.mode != 'head':
-            y_ix.append(1)
-            x[-self._e_ix_ln:, 1] = np.arange(self._e_ix_ln)
-        y = d[0][y_ix]
+    def _prepare_test(self, d_i):
+        if self._args.mode != 'time':
+            y_ix = []
+            x = np.repeat(d_i, self._e_ix_ln * (2 if self._args.mode == 'both' else 1), axis=0)
+            if self._args.mode != 'tail':
+                y_ix.append(0)
+                x[:self._e_ix_ln, 0] = np.arange(self._e_ix_ln)
+            if self._args.mode != 'head':
+                y_ix.append(1)
+                x[-self._e_ix_ln:, 1] = np.arange(self._e_ix_ln)
+            y = d_i[0][y_ix]
+        else:
+            if self._args.model == 'TTransE':
+                x = np.repeat(d_i, self._t_ix_ln, axis=0)
+                x[:, 3] = np.arange(self._t_ix_ln)
+                y = d_i[0][[3, ]]
+            elif self._args.model.startswith('TA'):
+                ix = [3, 4, 5, 6]
+                x = np.repeat(d_i, 31 * 24, axis=0)
+                y = None
+                for d in range(1, 32):
+                    for h in range(24):
+                        i = (d - 1) * 24 + h
+                        x[i, ix] = [self._t_ix[f'{z}d'] for z in f'{d:02}'] + [self._t_ix[f'{z}h'] for z in f'{h:02}']
+                        if (x[i, ix] == d_i[0][ix]).all():
+                            y = np.array([i, ])
+            elif self._args.model.startswith('DE'):
+                ix = [3, 4]
+                x = np.repeat(d_i, 31 * 24, axis=0)
+                y = np.array([(d_i[0][3] - 1) * 24 + d_i[0][4], ])
+                for d in range(1, 32):
+                    for h in range(24):
+                        x[(d - 1) * 24 + h, ix] = [d, h]
         return x, y
 
     def __getitem__(self, i):

@@ -120,7 +120,7 @@ def _args():
     argparser.add_argument('-fp', '--fp16', default=False, action='store_true')
     argparser.add_argument('-as', '--adasum', default=False, action='store_true')
     argparser.add_argument('-ts', '--test', default=False, action='store_true')
-    argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both'])
+    argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both', 'time'])
     argparser.add_argument('-vf', '--validation-frequency', type=int, default=100)
     argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
     argparser.add_argument('-tp', '--tpu', default=False, action='store_true')
