@@ -49,7 +49,7 @@ class AbstractTA(nn.Module, AbstractDropout):
         nn.init.xavier_uniform_(self.r_embed.weight)
         nn.init.xavier_uniform_(self.t_embed.weight)
 
-    def rt_embed(self, r, t):
+    def _rt_embed(self, r, t):
         r_e = self.r_embed(r)
 
         bs, ts = t.shape[:2]
@@ -64,7 +64,7 @@ class AbstractTA(nn.Module, AbstractDropout):
     def forward(self, s, o, r, t):
         s_e = self._dropout(self.e_embed(s).to(self.dvc))
         o_e = self._dropout(self.e_embed(o).to(self.dvc))
-        rt_e = self._dropout(self.rt_embed(r, t))
+        rt_e = self._dropout(self._rt_embed(r, t))
         return self._score(s_e, o_e, rt_e)
 
 
@@ -209,9 +209,72 @@ class DEComplEx(AbstractDE, AbstractSum):
         return self._sum(torch.cat([sc_r, sc_i], dim=1))
 
 
+class TASimplE(torch.nn.Module, AbstractDropout, AbstractSum):
+    def _score(self, s_s, o_s, rt_s, s_o, o_o, rt_o):
+        return self._sum(self._dropout((s_s * o_s * rt_s + s_o * o_o * rt_o) / 2.0))
+
+    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+        super().__init__()
+
+        self.dvc = args.dvc
+        self.dropout = args.dropout
+
+        self.lstm_f = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(self.dvc)
+        self.lstm_i = nn.LSTM(args.embedding_size, args.embedding_size, num_layers=1, batch_first=True).to(self.dvc)
+        for name, param in self.lstm_f.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+        for name, param in self.lstm_i.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+
+        self.e_embed_s = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.e_embed_o = nn.Embedding(e_cnt, args.embedding_size).to(args.aux_dvc)
+        self.r_embed_f = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
+        self.r_embed_i = nn.Embedding(r_cnt, args.embedding_size).to(self.dvc)
+        self.t_embed_f = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
+        self.t_embed_i = nn.Embedding(t_cnt, args.embedding_size).to(self.dvc)
+        nn.init.xavier_uniform_(self.e_embed_s.weight)
+        nn.init.xavier_uniform_(self.e_embed_o.weight)
+        nn.init.xavier_uniform_(self.r_embed_f.weight)
+        nn.init.xavier_uniform_(self.r_embed_i.weight)
+        nn.init.xavier_uniform_(self.t_embed_f.weight)
+        nn.init.xavier_uniform_(self.t_embed_i.weight)
+
+    def _rt_embed(self, r_embed, t_embed, lstm, r, t):
+        r_e = r_embed(r)
+
+        bs, ts = t.shape[:2]
+        t = t.reshape(-1)
+
+        t_e = t_embed(t).view(bs, ts, -1)
+        s_e = torch.cat((r_e.unsqueeze(1), t_e), dim=1)
+        _, (h, _) = lstm(s_e)
+
+        return h.squeeze()
+
+    def forward(self, s, o, r, t):
+        d, h = t[:, 0].float(), t[:, 1].float()
+        s_e_s = self._dropout(self.e_embed_s(s).to(self.dvc))
+        o_e_s = self._dropout(self.e_embed_o(o).to(self.dvc))
+        s_e_o = self._dropout(self.e_embed_s(o).to(self.dvc))
+        o_e_o = self._dropout(self.e_embed_o(s).to(self.dvc))
+        rt_e_f = self._dropout(self._rt_embed(self.r_embed_f, self.t_embed_f, self.lstm_f, r, t))
+        rt_e_i = self._dropout(self._rt_embed(self.r_embed_i, self.t_embed_i, self.lstm_i, r, t))
+        return self._score(s_e_s, o_e_s, rt_e_f, s_e_o, o_e_o, rt_e_i)
+
+
 class DESimplE(torch.nn.Module, AbstractDropout, AbstractSum):
-    def _score(self, s_e_s, r_e_s, o_e_s, s_e_o, r_e_o, o_e_o):
-        return self._sum(self._dropout(((s_e_s * r_e_s) * o_e_s + (s_e_o * r_e_o) * o_e_o) / 2.0))
+    def _score(self, st_s, ot_s, r_s, st_o, ot_o, r_o):
+        return self._sum(self._dropout((st_s * ot_s * r_s + st_o * ot_o * r_o) / 2.0))
 
     def __init__(self, args, e_cnt, r_cnt):
         super().__init__()
@@ -288,7 +351,7 @@ class DESimplE(torch.nn.Module, AbstractDropout, AbstractSum):
         o_t_s_o = torch.cat((o_e_s, t_e_o_o), dim=1)
         s_t_o_s = torch.cat((s_e_o, t_e_o_s), dim=1)
         o_t_o_o = torch.cat((o_e_o, t_e_s_o), dim=1)
-        return self._score(s_t_s_s, r_e_f, o_t_s_o, s_t_o_s, r_e_i, o_t_o_o)
+        return self._score(s_t_s_s, o_t_s_o, r_e_f, s_t_o_s, o_t_o_o, r_e_i)
 
 
 class TARotatE(AbstractTA, AbstractNorm):
