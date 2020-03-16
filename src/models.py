@@ -165,26 +165,24 @@ class TTransE(nn.Module, AbstractNorm):
         return self._score(s_e, o_e, r_e, t_e)
 
 
-class TARotatE(AbstractTA, AbstractNorm):
-    pi = 3.14159265358979323846
-
+class TATransE(AbstractTA, AbstractNorm):
     def _score(self, s, o, rt):
-        s_r, s_i = torch.chunk(s, 2, dim=1)
-        o_r, o_i = torch.chunk(o, 2, dim=1)
+        return (-1) * self._norm(s + rt - o)
 
-        rt_p = (self.pi * rt) / self.e_r
-        rt_r = torch.cos(rt_p)
-        rt_i = torch.sin(rt_p)
 
-        sc_r = s_r * rt_r - s_i * rt_i - o_r
-        sc_i = s_r * rt_i + s_i * rt_r - o_i
+class DETransE(AbstractDE, AbstractNorm):
+    def _score(self, st, ot, r):
+        return (-1) * self._norm(self._dropout(st + r - ot))
 
-        return (-1) * self._norm(torch.cat([sc_r, sc_i], dim=1))
 
-    def __init__(self, args, e_cnt, r_cnt, t_cnt):
-        super().__init__(args, e_cnt, r_cnt, t_cnt)
+class TADistMult(AbstractTA, AbstractSum):
+    def _score(self, s, o, rt):
+        return self._sum(s * o * rt)
 
-        self.e_r = 1  # NOTE: LSTM outputs are from [-1, 1]
+
+class DEDistMult(AbstractDE, AbstractSum):
+    def _score(self, st, ot, r):
+        return self._sum(self._dropout(st * ot * r))
 
 
 class TAComplEx(AbstractTA, AbstractSum):
@@ -197,48 +195,6 @@ class TAComplEx(AbstractTA, AbstractSum):
         sc_i = s_r * rt_i * o_i + s_i * rt_r * o_i
 
         return self._sum(torch.cat([sc_r, sc_i], dim=1))
-
-
-class TADistMult(AbstractTA, AbstractSum):
-    def _score(self, s, o, rt):
-        return self._sum(s * o * rt)
-
-
-class TATransE(AbstractTA, AbstractNorm):
-    def _score(self, s, o, rt):
-        return (-1) * self._norm(s + rt - o)
-
-
-class DEDistMult(AbstractDE, AbstractSum):
-    def _score(self, st, ot, r):
-        return self._sum(self._dropout(st * ot * r))
-
-
-class DETransE(AbstractDE, AbstractNorm):
-    def _score(self, st, ot, r):
-        return (-1) * self._norm(self._dropout(st + r - ot))
-
-
-class DERotatE(AbstractDE, AbstractNorm):
-    pi = 3.14159265358979323846
-
-    def _score(self, st, ot, r):
-        st_r, st_i = torch.chunk(st, 2, dim=1)
-        ot_r, ot_i = torch.chunk(ot, 2, dim=1)
-
-        r_p = (self.pi * r) / self.e_r
-        r_r = torch.cos(r_p)
-        r_i = torch.sin(r_p)
-
-        sc_r = st_r * r_r - st_i * r_i - ot_r
-        sc_i = st_r * r_i + st_i * r_r - ot_i
-
-        return (-1) * self._norm(self._dropout(torch.cat([sc_r, sc_i], dim=1)))
-
-    def __init__(self, args, e_cnt, r_cnt):
-        super().__init__(args, e_cnt, r_cnt)
-
-        self.e_r = 6 / np.sqrt((2 if self.double_r_es else 1) * args.embedding_size)
 
 
 class DEComplEx(AbstractDE, AbstractSum):
@@ -264,12 +220,13 @@ class DESimplE(torch.nn.Module, AbstractDropout, AbstractSum):
         self.dropout = args.dropout
 
         s_es = int(args.embedding_size * args.static_proportion)
-        t_es = args.embedding_size - s_es
+        r_es = args.embedding_size
+        t_es = r_es - s_es
 
         self.e_embed_s = nn.Embedding(e_cnt, s_es).to(args.aux_dvc)
         self.e_embed_o = nn.Embedding(e_cnt, s_es).to(args.aux_dvc)
-        self.r_embed_f = nn.Embedding(r_cnt, s_es + t_es).to(self.dvc)
-        self.r_embed_i = nn.Embedding(r_cnt, s_es + t_es).to(self.dvc)
+        self.r_embed_f = nn.Embedding(r_cnt, r_es).to(self.dvc)
+        self.r_embed_i = nn.Embedding(r_cnt, r_es).to(self.dvc)
         nn.init.xavier_uniform_(self.e_embed_s.weight)
         nn.init.xavier_uniform_(self.e_embed_o.weight)
         nn.init.xavier_uniform_(self.r_embed_f.weight)
@@ -332,3 +289,47 @@ class DESimplE(torch.nn.Module, AbstractDropout, AbstractSum):
         s_t_o_s = torch.cat((s_e_o, t_e_o_s), dim=1)
         o_t_o_o = torch.cat((o_e_o, t_e_s_o), dim=1)
         return self._score(s_t_s_s, r_e_f, o_t_s_o, s_t_o_s, r_e_i, o_t_o_o)
+
+
+class TARotatE(AbstractTA, AbstractNorm):
+    pi = 3.14159265358979323846
+
+    def _score(self, s, o, rt):
+        s_r, s_i = torch.chunk(s, 2, dim=1)
+        o_r, o_i = torch.chunk(o, 2, dim=1)
+
+        rt_p = (self.pi * rt) / self.e_r
+        rt_r = torch.cos(rt_p)
+        rt_i = torch.sin(rt_p)
+
+        sc_r = s_r * rt_r - s_i * rt_i - o_r
+        sc_i = s_r * rt_i + s_i * rt_r - o_i
+
+        return (-1) * self._norm(torch.cat([sc_r, sc_i], dim=1))
+
+    def __init__(self, args, e_cnt, r_cnt, t_cnt):
+        super().__init__(args, e_cnt, r_cnt, t_cnt)
+
+        self.e_r = 1  # NOTE: LSTM outputs are from [-1, 1]
+
+
+class DERotatE(AbstractDE, AbstractNorm):
+    pi = 3.14159265358979323846
+
+    def _score(self, st, ot, r):
+        st_r, st_i = torch.chunk(st, 2, dim=1)
+        ot_r, ot_i = torch.chunk(ot, 2, dim=1)
+
+        r_p = (self.pi * r) / self.e_r
+        r_r = torch.cos(r_p)
+        r_i = torch.sin(r_p)
+
+        sc_r = st_r * r_r - st_i * r_i - ot_r
+        sc_i = st_r * r_i + st_i * r_r - ot_i
+
+        return (-1) * self._norm(self._dropout(torch.cat([sc_r, sc_i], dim=1)))
+
+    def __init__(self, args, e_cnt, r_cnt):
+        super().__init__(args, e_cnt, r_cnt)
+
+        self.e_r = 6 / np.sqrt((2 if self.double_r_es else 1) * args.embedding_size)
