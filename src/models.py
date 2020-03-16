@@ -211,7 +211,7 @@ class DEComplEx(AbstractDE, AbstractSum):
 
 class TASimplE(torch.nn.Module, AbstractDropout, AbstractSum):
     def _score(self, s_s, o_s, rt_s, s_o, o_o, rt_o):
-        return self._sum(self._dropout((s_s * o_s * rt_s + s_o * o_o * rt_o) / 2.0))
+        return self._sum((s_s * o_s * rt_s + s_o * o_o * rt_o) / 2.0)
 
     def __init__(self, args, e_cnt, r_cnt, t_cnt):
         super().__init__()
