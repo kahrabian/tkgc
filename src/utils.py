@@ -361,7 +361,7 @@ def _p(args):
 
 def _evaluate(args, y_r, y, tp_ix, tp_rix, mtr):
     y_r = y_r.cpu().numpy()
-    for i, y_i in enumerate(y.numpy()):
+    for i, y_i in enumerate(y.cpu().numpy()):
         r = np.argwhere(y_r[i] == y_i[0])[0, 0] + 1
         if args.sampling_technique == 'type':
             r = np.isin(y_r[i], tp_ix[tp_rix[y_i[0]]])[:r].sum()
