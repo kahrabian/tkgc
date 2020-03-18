@@ -1,5 +1,8 @@
 import argparse
-import horovod.torch as hvd
+try:
+    import horovod.torch as hvd
+except ImportError:
+    pass
 import numpy as np
 import os
 import re
