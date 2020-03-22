@@ -134,7 +134,7 @@ def _args():
     argparser.add_argument('--tpu', default=False, action='store_true')
     argparser.add_argument('--aux-cpu', default=False, action='store_true')
     argparser.add_argument('--threads', type=int, default=1)
-    argparser.add_argument('--workers', type=int, default=1)q
+    argparser.add_argument('--workers', type=int, default=1)
 
     args = argparser.parse_args()
 
