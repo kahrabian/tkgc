@@ -112,6 +112,7 @@ def _args():
     argparser.add_argument('--learning-rate-step', type=int, default=1)
     argparser.add_argument('--learning-rate-gamma', type=float, default=1.0)
     argparser.add_argument('--weight-decay', type=float, default=0.0)
+    argparser.add_argument('--gamma', type=float, default=0.0)
     argparser.add_argument('--epochs', type=int, default=1000)
     argparser.add_argument('--batch-size', type=int, default=512)
     argparser.add_argument('--test-batch-size', type=int, default=512)
@@ -309,6 +310,10 @@ def _loss(args, p, n, mdl, loss_f):
         x = torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
+
+    for name, param in mdl.named_parameters():
+        if '_embed' in name.split('.')[0]:
+            loss += args.gamma * param.norm(p=3) ** 3
 
     return loss
 
