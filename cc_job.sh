@@ -16,19 +16,26 @@ source ${VENVDIR}/gg/bin/activate
 
 export LD_LIBRARY_PATH=${VENVDIR}/gg/lib/python3.7/site-packages/torch/lib:${LD_LIBRARY_PATH}
 horovodrun -np 2 -hostfile hostfile --mpi-args="--oversubscribe" --timeline-filename ./logs/timeline-${SLURM_JOB_ID}.json --timeline-mark-cycles python main.py \
-           -ds GitGraph \
-           -mo TATransE \
-           -do 0.2 \
-           -l1 \
-           -es 256 \
-           -lr 0.001 \
-           -ep 10 \
-           -bs 256 \
-           -ns 32 \
-           -fl \
-           -fp \
-           -as \
-           -md head \
-           -vf 2 \
-           -th 15 \
-           -wo 1
+           --dataset GitGraph_0.01 \
+           --model TADistMult \
+           --dropout 0.4 \
+           --embedding-size 100 \
+           --static-proportion 0.36 \
+           --learning-rate 0.01 \
+           --learning-rate-step 1 \
+           --learning-rate-gamma 1.0 \
+           --weight-decay 0.0 \
+           --epochs 10 \
+           --batch-size 256 \
+           --test-batch-size 1 \
+           --negative-samples 500 \
+           --sampling-technique type \
+           --time-fraction 0.0 \
+           --filter \
+           --fp16 \
+           --adasum \
+           --mode head \
+           --validation-frequency 5 \
+           --log-frequency 10 \
+           --threads 10 \
+           --workers 5

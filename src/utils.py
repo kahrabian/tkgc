@@ -97,40 +97,40 @@ class Integer(object):
 def _args():
     argparser = argparse.ArgumentParser()
 
-    argparser.add_argument('-ds', '--dataset', type=str, required=True)
-    argparser.add_argument('-mo', '--model', type=str, required=True, choices=['DETransE', 'TATransE', 'TTransE',
-                                                                               'DEDistMult', 'TADistMult',
-                                                                               'DEComplEx', 'TAComplEx',
-                                                                               'DESimplE', 'TASimplE',
-                                                                               'DERotatE', 'TARotatE'])
-    argparser.add_argument('-do', '--dropout', type=float, default=0)
-    argparser.add_argument('-l1', '--l1', default=False, action='store_true')
-    argparser.add_argument('-es', '--embedding-size', type=int, default=128)
-    argparser.add_argument('-sp', '--static-proportion', type=float, default=1.0)
-    argparser.add_argument('-mr', '--margin', type=int, default=1)
-    argparser.add_argument('-lr', '--learning-rate', type=float, default=0.001)
-    argparser.add_argument('-ls', '--learning-rate-step', type=int, default=1)
-    argparser.add_argument('-lg', '--learning-rate-gamma', type=float, default=1)
-    argparser.add_argument('-wd', '--weight-decay', type=float, default=0)
-    argparser.add_argument('-ep', '--epochs', type=int, default=1000)
-    argparser.add_argument('-bs', '--batch-size', type=int, default=512)
-    argparser.add_argument('-tb', '--test-batch-size', type=int, default=512)
-    argparser.add_argument('-ns', '--negative-samples', type=int, default=1)
-    argparser.add_argument('-st', '--sampling-technique', type=str, default='random', choices=['random', 'type'])
-    argparser.add_argument('-tf', '--time-fraction', type=float, default=0.0)
-    argparser.add_argument('-fl', '--filter', default=True, action='store_true')
-    argparser.add_argument('-rs', '--resume', type=str, default='')
-    argparser.add_argument('-dt', '--deterministic', default=False, action='store_true')
-    argparser.add_argument('-fp', '--fp16', default=False, action='store_true')
-    argparser.add_argument('-as', '--adasum', default=False, action='store_true')
-    argparser.add_argument('-ts', '--test', default=False, action='store_true')
-    argparser.add_argument('-md', '--mode', type=str, default='both', choices=['head', 'tail', 'both', 'time'])
-    argparser.add_argument('-vf', '--validation-frequency', type=int, default=100)
-    argparser.add_argument('-lf', '--log-frequency', type=int, default=100)
-    argparser.add_argument('-tp', '--tpu', default=False, action='store_true')
-    argparser.add_argument('-ac', '--aux-cpu', default=False, action='store_true')
-    argparser.add_argument('-th', '--threads', type=int, default=1)
-    argparser.add_argument('-wo', '--workers', type=int, default=1)
+    argparser.add_argument('--dataset', type=str, required=True)
+    argparser.add_argument('--model', type=str, required=True, choices=['DETransE', 'TATransE', 'TTransE',
+                                                                        'DEDistMult', 'TADistMult',
+                                                                        'DEComplEx', 'TAComplEx',
+                                                                        'DESimplE', 'TASimplE',
+                                                                        'DERotatE', 'TARotatE'])
+    argparser.add_argument('--dropout', type=float, default=0.0)
+    argparser.add_argument('--l1', default=False, action='store_true')
+    argparser.add_argument('--embedding-size', type=int, default=128)
+    argparser.add_argument('--static-proportion', type=float, default=1.0)
+    argparser.add_argument('--margin', type=int, default=1)
+    argparser.add_argument('--learning-rate', type=float, default=0.001)
+    argparser.add_argument('--learning-rate-step', type=int, default=1)
+    argparser.add_argument('--learning-rate-gamma', type=float, default=1.0)
+    argparser.add_argument('--weight-decay', type=float, default=0.0)
+    argparser.add_argument('--epochs', type=int, default=1000)
+    argparser.add_argument('--batch-size', type=int, default=512)
+    argparser.add_argument('--test-batch-size', type=int, default=512)
+    argparser.add_argument('--negative-samples', type=int, default=1)
+    argparser.add_argument('--sampling-technique', type=str, default='random', choices=['random', 'type'])
+    argparser.add_argument('--time-fraction', type=float, default=0.0)
+    argparser.add_argument('--filter', default=True, action='store_true')
+    argparser.add_argument('--resume', type=str, default='')
+    argparser.add_argument('--deterministic', default=False, action='store_true')
+    argparser.add_argument('--fp16', default=False, action='store_true')
+    argparser.add_argument('--adasum', default=False, action='store_true')
+    argparser.add_argument('--test', default=False, action='store_true')
+    argparser.add_argument('--mode', type=str, default='both', choices=['head', 'tail', 'both', 'time'])
+    argparser.add_argument('--validation-frequency', type=int, default=100)
+    argparser.add_argument('--log-frequency', type=int, default=100)
+    argparser.add_argument('--tpu', default=False, action='store_true')
+    argparser.add_argument('--aux-cpu', default=False, action='store_true')
+    argparser.add_argument('--threads', type=int, default=1)
+    argparser.add_argument('--workers', type=int, default=1)
 
     args = argparser.parse_args()
 
@@ -353,10 +353,6 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
         t.close()
         tr_ls.val /= len(tr_dl)
         tb_sw.add_scalar(f'loss/train', tr_ls.val, e)
-
-
-def _p(args):
-    return 1 if (args.model.endswith('TransE') or args.model.endswith('RotatE')) and args.l1 else 2
 
 
 def _evaluate(args, y_r, y, tp_ix, tp_rix, mtr):
