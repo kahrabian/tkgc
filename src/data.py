@@ -106,7 +106,7 @@ class Dataset(tDataset):
                 p_i[ix] = s
 
     def _prepare_train(self, d_i):
-        p = np.repeat(d_i, self._args.negative_samples if self._args.model == 'TTransE' else 1, axis=0)
+        p = d_i.copy()
         n = np.repeat(d_i, self._args.negative_samples, axis=0)
 
         sf = int(np.ceil(n.shape[0] * (1 - self._args.time_fraction)))
