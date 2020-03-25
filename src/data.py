@@ -22,7 +22,7 @@ class Dataset(tDataset):
             ft = [f'{d}{h}', ]
         return ft
 
-    def transform(self, t_ix, sm, qs=True, qs_bs=None):
+    def transform(self, t_ix, qs=True, qs_bs=None):
         self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [t_ix[y] for y in x[3:]], 2, self._d)
         self._qs = {**qs_bs, **{tuple(x): True for x in self._d[0]}} if qs else {}
 
@@ -30,10 +30,10 @@ class Dataset(tDataset):
         for q in self._qs.keys():
             s, o, r = q[:3]
             if (s, r) not in self._frq:
-                self._frq[(s, r)] = sm
+                self._frq[(s, r)] = self._args.smoothing
             self._frq[(s, r)] += 1
             if (o, (-1) * r - 1) not in self._frq:
-                self._frq[(o, (-1) * r - 1)] = sm
+                self._frq[(o, (-1) * r - 1)] = self._args.smoothing
             self._frq[(o, (-1) * r - 1)] += 1
 
         self._t_ix = t_ix

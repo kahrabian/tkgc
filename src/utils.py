@@ -224,9 +224,9 @@ def data(args):
         t_ix = {e: i for i, e in enumerate(np.unique(al_t))}
     t_ix_ln = len(t_ix)
 
-    tr_ds.transform(t_ix, args.smoothing, qs_bs={})
-    vd_ds.transform(t_ix, args.smoothing, qs_bs=tr_ds._qs)
-    ts_ds.transform(t_ix, args.smoothing, qs=False)
+    tr_ds.transform(t_ix, qs_bs={})
+    vd_ds.transform(t_ix, qs_bs=tr_ds._qs)
+    ts_ds.transform(t_ix, qs=False)
 
     tr_smp = DistributedSampler(tr_ds, num_replicas=_size(args), rank=_rank(args))
     vd_smp = DistributedSampler(vd_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
