@@ -22,9 +22,19 @@ class Dataset(tDataset):
             ft = [f'{d}{h}', ]
         return ft
 
-    def transform(self, t_ix, qs=True, qs_bs=None):
+    def transform(self, t_ix, sm, qs=True, qs_bs=None):
         self._d = np.apply_along_axis(lambda x: x[:3].astype(np.int_).tolist() + [t_ix[y] for y in x[3:]], 2, self._d)
         self._qs = {**qs_bs, **{tuple(x): True for x in self._d[0]}} if qs else {}
+
+        self._frq = {}
+        for q in self._qs.keys():
+            s, o, r = q[:3]
+            if (s, r) not in self._frq:
+                self._frq[(s, r)] = sm
+            self._frq[(s, r)] += 1
+            if (o, (-1) * r - 1) not in self._frq:
+                self._frq[(o, (-1) * r - 1)] = sm
+            self._frq[(o, (-1) * r - 1)] += 1
 
         self._t_ix = t_ix
         self._t_ix_ln = len(t_ix)
@@ -106,8 +116,12 @@ class Dataset(tDataset):
                 p_i[ix] = s
 
     def _prepare_train(self, d_i):
-        p = d_i.copy()
+        p = np.repeat(d_i, self._args.negative_samples if self._args.loss == 'MR' else 1, axis=0)
         n = np.repeat(d_i, self._args.negative_samples, axis=0)
+        if self._args.uniform_weighing:
+            w = 1
+        else:
+            w = np.sqrt(1 / self._frq[(d_i[0, 0], d_i[0, 2])] + self._frq[(d_i[0, 1], (-1) * d_i[0, 2] - 1)])
 
         sf = int(np.ceil(n.shape[0] * (1 - self._args.time_fraction)))
         if self._args.sampling_technique == 'random':
@@ -115,7 +129,7 @@ class Dataset(tDataset):
         elif self._args.sampling_technique == 'type':
             self._corrupt_type(n[:sf])
         self._corrupt_time(n[sf:])
-        return p, n
+        return p, n, w
 
     def _prepare_test(self, d_i):
         if self._args.mode != 'time':

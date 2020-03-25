@@ -9,7 +9,6 @@ import re
 import shutil
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 try:
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.parallel_loader as pl
@@ -22,6 +21,7 @@ from tqdm import tqdm
 
 import src.models as models
 from src.data import Dataset
+from src.loss import NegativeSamplingLoss
 
 
 def _allreduce(val, name, op):
@@ -122,8 +122,10 @@ def _args():
     argparser.add_argument('--self-adversarial-sampling', default=False, action='store_true')
     argparser.add_argument('--self-adversarial-temperature', type=float, default=1.0)
     argparser.add_argument('--time-fraction', type=float, default=0.0)
-    argparser.add_argument('--loss', type=str, default='CE', choices=['CE', 'MR'])
-    argparser.add_argument('--filter', default=True, action='store_true')
+    argparser.add_argument('--loss', type=str, default='CE', choices=['CE', 'MR', 'NS'])
+    argparser.add_argument('--uniform-weighing', default=False, action='store_true')
+    argparser.add_argument('--smoothing', type=int, default=0)
+    argparser.add_argument('--filter', default=False, action='store_true')
     argparser.add_argument('--resume', type=str, default='')
     argparser.add_argument('--deterministic', default=False, action='store_true')
     argparser.add_argument('--fp16', default=False, action='store_true')
@@ -222,9 +224,9 @@ def data(args):
         t_ix = {e: i for i, e in enumerate(np.unique(al_t))}
     t_ix_ln = len(t_ix)
 
-    tr_ds.transform(t_ix, qs_bs={})
-    vd_ds.transform(t_ix, qs_bs=tr_ds._qs)
-    ts_ds.transform(t_ix, qs=False)
+    tr_ds.transform(t_ix, args.smoothing, qs_bs={})
+    vd_ds.transform(t_ix, args.smoothing, qs_bs=tr_ds._qs)
+    ts_ds.transform(t_ix, args.smoothing, qs=False)
 
     tr_smp = DistributedSampler(tr_ds, num_replicas=_size(args), rank=_rank(args))
     vd_smp = DistributedSampler(vd_ds, num_replicas=_size(args), rank=_rank(args), shuffle=False)
@@ -277,6 +279,8 @@ def _loss_f(args):
         return nn.CrossEntropyLoss()
     elif args.loss == 'MR':
         return nn.MarginRankingLoss(args.margin)
+    elif args.loss == 'NS':
+        return NegativeSamplingLoss(args)
 
 
 def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
@@ -303,25 +307,23 @@ def prepare(args, e_ix_ln, r_ix_ln, t_ix_ln):
     return mdl, opt, lr_sc, ls_f, st_e, bst_ls
 
 
-def _loss(args, p, n, mdl, loss_f):
+def _loss(args, p, n, w, mdl, loss_f):
     p_s, p_o, p_r, p_t = p[:, 0], p[:, 1], p[:, 2].to(args.dvc), p[:, 3:].to(args.dvc)
     n_s, n_o, n_r, n_t = n[:, 0], n[:, 1], n[:, 2].to(args.dvc), n[:, 3:].to(args.dvc)
 
     if mdl.training:
         mdl.zero_grad()
     s_p = mdl(p_s, p_o, p_r, p_t)
-    s_n = mdl(n_s, n_o, n_r, n_t).view(s_p.shape[0], -1)
+    s_n = mdl(n_s, n_o, n_r, n_t)
 
     if args.loss == 'MR':
-        if args.self_adversarial_sampling:
-            y = (F.softmax(s_n * args.self_adversarial_temperature, dim=1).detach() * F.logsigmoid(s_n)).sum(dim=1)
-        else:
-            y = F.logsigmoid(s_n).mean(dim=1)
-        loss = loss_f(s_p, y, torch.ones(s_p.shape[0]).to(args.dvc))
+        loss = loss_f(s_p, s_n, torch.ones(s_p.shape[0]).to(args.dvc))
     elif args.loss == 'CE':
-        x = torch.cat((s_p.view(-1, 1), s_n), dim=1)
+        x = torch.cat((s_p.view(-1, 1), s_n.view(s_p.shape[0], -1)), dim=1)
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
+    elif args.loss == 'NS':
+        loss = loss_f(s_p, s_n.view(s_p.shape[0], -1), w)
 
     for name, param in mdl.named_parameters():
         if '_embed' in name.split('.')[0]:
@@ -349,11 +351,11 @@ def train(args, e, mdl, opt, ls_f, tr_dl, tb_sw):
     mdl.train()
     if not args.tpu:
         tr.sampler.set_epoch(e)
-    for i, (p, n) in enumerate(tr, 1):
+    for i, (p, n, w) in enumerate(tr, 1):
         p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
         n = n.view(-1, n.shape[-1]).to(args.aux_dvc)
 
-        ls = _loss(args, p, n, mdl, ls_f)
+        ls = _loss(args, p, n, w, mdl, ls_f)
         ls.backward()
         if args.tpu:
             xm.optimizer_step(opt)
@@ -421,12 +423,12 @@ def validate(args, e, mdl, opt, ls_f, vd_dl, tp_ix, tp_rix, ls_mtr, tb_sw):
 
     mdl.eval()
     with torch.no_grad():
-        for p, n, x, y in vd:
+        for p, n, w, x, y in vd:
             p = p.view(-1, p.shape[-1]).to(args.aux_dvc)
             n = n.view(-1, n.shape[-1]).to(args.aux_dvc)
             x = x.view(-1, x.shape[-1]).to(args.aux_dvc)
 
-            ls = _loss(args, p, n, mdl, ls_f)
+            ls = _loss(args, p, n, w, mdl, ls_f)
             if args.tpu:
                 xm.add_step_closure(_validate, args=(vd_ls, ls))
             else:
