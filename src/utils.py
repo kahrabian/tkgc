@@ -151,6 +151,7 @@ def initialize():
         hvd.init()
 
     if args.deterministic:
+        np.random.seed(_rank(args))  # NOTE: Reproducability
         torch.manual_seed(_rank(args))  # NOTE: Reproducability
 
     torch.set_num_threads(args.threads)
