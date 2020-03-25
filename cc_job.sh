@@ -30,7 +30,10 @@ horovodrun -np 2 -hostfile hostfile --mpi-args="--oversubscribe" --timeline-file
            --test-batch-size 1 \
            --negative-samples 500 \
            --sampling-technique type \
+           --self-adversarial-temperature 0.5 \
            --time-fraction 0.0 \
+           --loss CE \
+           --smoothing 0 \
            --filter \
            --fp16 \
            --adasum \
