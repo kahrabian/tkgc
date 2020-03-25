@@ -323,7 +323,7 @@ def _loss(args, p, n, w, mdl, loss_f):
         y = torch.zeros(s_p.shape[0]).long().to(args.dvc)
         loss = loss_f(x, y)
     elif args.loss == 'NS':
-        loss = loss_f(s_p, s_n.view(s_p.shape[0], -1), w)
+        loss = loss_f(s_p, s_n.view(s_p.shape[0], -1), w.to(args.dvc))
 
     for name, param in mdl.named_parameters():
         if '_embed' in name.split('.')[0]:
